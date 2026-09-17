@@ -195,3 +195,31 @@ The primary device is Turing sm_75. `cp.async`, `ldmatrix`, and `mma` are unavai
 flash attention uses plain shared-memory staging. Any prompt or plan proposing these is wrong and
 must be corrected before delivery. If a secondary-device experiment needs them, it is scoped and
 labelled separately and never enters the main waterfall.
+
+RULE 19 — BACKGROUND LOAD IS A RECORDED RUN CONDITION, NOT A REMINDER.
+Every prompt for a stage that produces a timed number instructs the agent to enumerate,
+at the hard checkpoint, every process holding a GPU context and every significant CPU
+consumer, naming each, and to present that as an explicit close-these list rather than a
+generic "ensure the machine is idle" line. Overlay and monitoring software is named
+directly: Dragon Center and its services, NVIDIA App and its overlay, Nahimic, Discord,
+browsers and embedded webviews, Steam, Logitech Options+, OneDrive.
+Some consumers cannot be closed and must instead be RECORDED: Windows Defender
+(MsMpEng), Riot Vanguard (vgc, vgtray), WmiPrvSE, SearchIndexer, nvcontainer, dwm, and
+Claude Code itself. Stage 0 measured a 4.4 percent p90 noise floor with these present,
+and roughly half of all configurations were invalid in at least one of two runs. That
+population is therefore part of the measurement condition, and it is written into the
+stage's MEASUREMENTS.md entry per BENCHMARK_PROTOCOL.md section 4, where an unrecorded
+deviation is a fabricated number.
+The agent re-enumerates AFTER the operator says proceed and BEFORE the first timed run,
+and reports any process still present. It never closes anything itself.
+If the recorded set differs from Stage 0's, the agent states the difference explicitly,
+because the noise floor was measured against Stage 0's set and a changed set means the
+floor may no longer apply.
+
+RULE 20 — GIT SUCCESS IS VERIFIED BY STATE, NOT BY EXIT CODE.
+A push is confirmed with git ls-remote against the branch, not by a zero exit status.
+Stage 0 observed a push that hung on an interactive credential prompt while the wrapper
+reported exit 0 and the log read "fatal: could not read Username", caused by Git
+Credential Manager resolving the unqualified remote host to a stored account that was
+not the repository owner. The agent verifies the remote ref matches the local HEAD and
+reports both hashes before declaring the push done.
