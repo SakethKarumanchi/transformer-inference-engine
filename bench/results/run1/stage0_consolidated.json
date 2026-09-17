@@ -1,0 +1,719 @@
+{
+  "stage": "stage-0",
+  "generated_utc": "2026-09-17T09:59:59Z",
+  "benchmarks": {
+    "gpu_bandwidth": {
+      "order": 1,
+      "units": "GB/s",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 0.424,
+      "values": {
+        "float4 grid-stride copy, 268435456 B/buffer, grid=512 block=256": {
+          "value": 172.1702505093598,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.842669995857497
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "gpu_fp32_peak": {
+      "order": 2,
+      "units": "GFLOP/s",
+      "status": "ok",
+      "reason": null,
+      "elapsed_s": 0.872,
+      "values": {
+        "32 FMA chains, 32768 iters, grid=64 block=256": {
+          "value": 2787.4085556698396,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.886980217664305
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "cpu_cache_ladder": {
+      "order": 3,
+      "units": "GB/s",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 5.732,
+      "values": {
+        "working_set=4096 B, 268435456 B read per sample": {
+          "value": 120.15104446616019,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.9886422938495003
+        },
+        "working_set=8192 B, 268435456 B read per sample": {
+          "value": 119.31260128461851,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 8.66650081132602
+        },
+        "working_set=16384 B, 268435456 B read per sample": {
+          "value": 113.23285006817828,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 12.03244928045891
+        },
+        "working_set=32768 B, 268435456 B read per sample": {
+          "value": 121.09961246386361,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 4.024454129845164
+        },
+        "working_set=65536 B, 268435456 B read per sample": {
+          "value": 106.99541861211162,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 4.899451701697912
+        },
+        "working_set=131072 B, 268435456 B read per sample": {
+          "value": 108.3602607793242,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 7.213520796678427
+        },
+        "working_set=262144 B, 268435456 B read per sample": {
+          "value": 103.18884293060285,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 13.32714043161002
+        },
+        "working_set=524288 B, 268435456 B read per sample": {
+          "value": 64.48125294514615,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.509521955955208
+        },
+        "working_set=1048576 B, 268435456 B read per sample": {
+          "value": 56.78169349344085,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 9.631397786491753
+        },
+        "working_set=2097152 B, 268435456 B read per sample": {
+          "value": 59.29326986699059,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.6268282923669775
+        },
+        "working_set=4194304 B, 268435456 B read per sample": {
+          "value": 59.45743529544088,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 7.342003080874328
+        },
+        "working_set=8388608 B, 268435456 B read per sample": {
+          "value": 33.7035702979351,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 10.337033883751339
+        },
+        "working_set=16777216 B, 268435456 B read per sample": {
+          "value": 22.20860891855349,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 9.70102124750179
+        },
+        "working_set=33554432 B, 268435456 B read per sample": {
+          "value": 18.611817775464772,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 10.474280269806645
+        },
+        "working_set=67108864 B, 268435456 B read per sample": {
+          "value": 17.819784783655642,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 8.542242957009233
+        },
+        "working_set=134217728 B, 268435456 B read per sample": {
+          "value": 15.994390547527951,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 7.7282197562191035
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "cpu_simd_peak": {
+      "order": 4,
+      "units": "GFLOP/s",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 0.636,
+      "values": {
+        "vectorised FMA loop, AVX2": {
+          "value": 42.82870192198251,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.862169860846235
+        },
+        "scalar reference of the same loop": {
+          "value": 7.967730690204603,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.2119642546787949
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "host_device_transfer": {
+      "order": 5,
+      "units": "GB/s",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 9.02,
+      "values": {
+        "pinned host-to-device": {
+          "value": 12.634911065016412,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.6716732246840955
+        },
+        "pinned device-to-host": {
+          "value": 10.657289363543711,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 3.270016512570194
+        },
+        "pageable host-to-device": {
+          "value": 5.442783117670824,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 3.9725146386105616
+        },
+        "pageable device-to-host": {
+          "value": 4.927175762236315,
+          "units": "GB/s",
+          "valid": false,
+          "stddev_pct_of_median": 17.930567493254035
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "cublas_sgemm_ref": {
+      "order": 6,
+      "units": "GFLOP/s",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 8.644,
+      "values": {
+        "decode qkv_projection M=1 N=2304 K=768": {
+          "value": 66.9443096725392,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.208745407699028
+        },
+        "prefill qkv_projection M=8 N=2304 K=768": {
+          "value": 418.90908763723934,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.272989546588354
+        },
+        "prefill qkv_projection M=16 N=2304 K=768": {
+          "value": 359.2471900991319,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.8422306804491408
+        },
+        "prefill qkv_projection M=32 N=2304 K=768": {
+          "value": 1119.5647048315764,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.899156147714855
+        },
+        "prefill qkv_projection M=64 N=2304 K=768": {
+          "value": 1557.6337543730474,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.254136916845772
+        },
+        "prefill qkv_projection M=128 N=2304 K=768": {
+          "value": 1783.6295567361528,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.4876892841721643
+        },
+        "prefill qkv_projection M=256 N=2304 K=768": {
+          "value": 1453.7755631777327,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.650579939728366
+        },
+        "prefill qkv_projection M=512 N=2304 K=768": {
+          "value": 1557.5481210104956,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.3407756184550155
+        },
+        "prefill qkv_projection M=1024 N=2304 K=768": {
+          "value": 1575.9612190917624,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 6.651302119970236
+        },
+        "decode attn_output_projection M=1 N=768 K=768": {
+          "value": 38.8042098720054,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 7.412610973475251
+        },
+        "prefill attn_output_projection M=8 N=768 K=768": {
+          "value": 273.0666772442103,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.625921956427148
+        },
+        "prefill attn_output_projection M=16 N=768 K=768": {
+          "value": 383.999986417592,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.6641228416314549
+        },
+        "prefill attn_output_projection M=32 N=768 K=768": {
+          "value": 576.1406291091403,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 13.543097645398584
+        },
+        "prefill attn_output_projection M=64 N=768 K=768": {
+          "value": 900.4946417257314,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.4284686816648975
+        },
+        "prefill attn_output_projection M=128 N=768 K=768": {
+          "value": 1360.60895840497,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.8524558078164004
+        },
+        "prefill attn_output_projection M=256 N=768 K=768": {
+          "value": 1284.6697830454616,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.3171145731753242
+        },
+        "prefill attn_output_projection M=512 N=768 K=768": {
+          "value": 1934.542939652438,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 3.7989728669113667
+        },
+        "prefill attn_output_projection M=1024 N=768 K=768": {
+          "value": 1546.667312046367,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.23671682598811905
+        },
+        "decode ffn_up M=1 N=3072 K=768": {
+          "value": 70.97761778543438,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 10.41511272651772
+        },
+        "prefill ffn_up M=8 N=3072 K=768": {
+          "value": 439.10218290901787,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.938186148453847
+        },
+        "prefill ffn_up M=16 N=3072 K=768": {
+          "value": 425.0600842571172,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 4.955810285187688
+        },
+        "prefill ffn_up M=32 N=3072 K=768": {
+          "value": 984.2703482968337,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 9.194882028399238
+        },
+        "prefill ffn_up M=64 N=3072 K=768": {
+          "value": 1692.0096883569427,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.1949199463955609
+        },
+        "prefill ffn_up M=128 N=3072 K=768": {
+          "value": 1937.024599634021,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.5031027293651387
+        },
+        "prefill ffn_up M=256 N=3072 K=768": {
+          "value": 1548.0945258189356,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 12.927090390020894
+        },
+        "prefill ffn_up M=512 N=3072 K=768": {
+          "value": 1568.1594721304075,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.33123048283548845
+        },
+        "prefill ffn_up M=1024 N=3072 K=768": {
+          "value": 1579.0486097844293,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 6.435760200501946
+        },
+        "decode ffn_down M=1 N=768 K=3072": {
+          "value": 55.960532916132856,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 13.815658817510036
+        },
+        "prefill ffn_down M=8 N=768 K=3072": {
+          "value": 407.8299181785847,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.3805322388505867
+        },
+        "prefill ffn_down M=16 N=768 K=3072": {
+          "value": 459.1409830216744,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 4.529512651687515
+        },
+        "prefill ffn_down M=32 N=768 K=3072": {
+          "value": 1207.882228949865,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.323837785371112
+        },
+        "prefill ffn_down M=64 N=768 K=3072": {
+          "value": 1416.037839210514,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 3.1708377287272884
+        },
+        "prefill ffn_down M=128 N=768 K=3072": {
+          "value": 1966.0799066162153,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.8284821019059059
+        },
+        "prefill ffn_down M=256 N=768 K=3072": {
+          "value": 1516.6835294216387,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.23904210202434145
+        },
+        "prefill ffn_down M=512 N=768 K=3072": {
+          "value": 2344.3507435475585,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 0.39528055520269506
+        },
+        "prefill ffn_down M=1024 N=768 K=3072": {
+          "value": 1601.5925616503364,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 5.250923925247647
+        },
+        "decode lm_head M=1 N=50257 K=768": {
+          "value": 85.13325895529849,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.6648665901037463
+        },
+        "prefill lm_head M=8 N=50257 K=768": {
+          "value": 293.2240540858184,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 11.921313790772826
+        },
+        "prefill lm_head M=16 N=50257 K=768": {
+          "value": 290.6976298921588,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.3653719615486115
+        },
+        "prefill lm_head M=32 N=50257 K=768": {
+          "value": 1242.8315333497455,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 6.44870319983507
+        },
+        "prefill lm_head M=64 N=50257 K=768": {
+          "value": 2381.8556661581424,
+          "units": "GFLOP/s",
+          "valid": false,
+          "stddev_pct_of_median": 6.94973575426035
+        },
+        "prefill lm_head M=128 N=50257 K=768": {
+          "value": 1573.2759320401767,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.392865206214871
+        },
+        "prefill lm_head M=256 N=50257 K=768": {
+          "value": 1579.9312907229996,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.6642664908760163
+        },
+        "prefill lm_head M=512 N=50257 K=768": {
+          "value": 1584.471368296953,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.819976823911128
+        },
+        "prefill lm_head M=1024 N=50257 K=768": {
+          "value": 1563.7334586268735,
+          "units": "GFLOP/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.1183446614448806
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "kernel_launch_overhead": {
+      "order": 7,
+      "units": "us",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 1.449,
+      "values": {
+        "sync per launch (launch to completion)": {
+          "value": 14.049000000113665,
+          "units": "us",
+          "valid": false,
+          "stddev_pct_of_median": 7.367297794681255
+        },
+        "back to back, one sync per batch": {
+          "value": 8.56765000003179,
+          "units": "us",
+          "valid": true,
+          "stddev_pct_of_median": 2.407017811590574
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "shared_mem_bandwidth": {
+      "order": 8,
+      "units": "GB/s",
+      "status": "ok",
+      "reason": null,
+      "elapsed_s": 0.802,
+      "values": {
+        "conflict-free": {
+          "value": 3087.4523750323256,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 1.4431723828119405
+        },
+        "32-way bank conflict": {
+          "value": 99.93948125046093,
+          "units": "GB/s",
+          "valid": true,
+          "stddev_pct_of_median": 2.26945682352543
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    },
+    "occupancy_sweep": {
+      "order": 9,
+      "units": "ms",
+      "status": "invalid",
+      "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+      "elapsed_s": 1.661,
+      "values": {
+        "acc=4 block=32 regs/thread=12 blocks/SM=16 limiter=blocks": {
+          "value": 0.10384000092744827,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 3.9406345736561357
+        },
+        "acc=4 block=64 regs/thread=12 blocks/SM=16 limiter=blocks": {
+          "value": 0.2009279951453209,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.7085125474954568
+        },
+        "acc=4 block=128 regs/thread=12 blocks/SM=8 limiter=warps": {
+          "value": 0.19937600195407867,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.4707654033965106
+        },
+        "acc=4 block=256 regs/thread=12 blocks/SM=4 limiter=warps": {
+          "value": 0.1982719972729683,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.735662062243416
+        },
+        "acc=4 block=512 regs/thread=12 blocks/SM=2 limiter=warps": {
+          "value": 0.19814399629831314,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.8049737150622058
+        },
+        "acc=4 block=1024 regs/thread=12 blocks/SM=1 limiter=warps": {
+          "value": 0.19816000014543533,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.7422036467337487
+        },
+        "acc=16 block=32 regs/thread=36 blocks/SM=16 limiter=blocks": {
+          "value": 0.398032009601593,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 1.2064732879401996
+        },
+        "acc=16 block=64 regs/thread=36 blocks/SM=16 limiter=blocks": {
+          "value": 0.7845440208911896,
+          "units": "ms",
+          "valid": false,
+          "stddev_pct_of_median": 14.542165750423761
+        },
+        "acc=16 block=128 regs/thread=36 blocks/SM=8 limiter=warps": {
+          "value": 0.781440019607544,
+          "units": "ms",
+          "valid": false,
+          "stddev_pct_of_median": 9.690065828601567
+        },
+        "acc=16 block=256 regs/thread=36 blocks/SM=4 limiter=warps": {
+          "value": 0.7739520072937012,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.2586223661129803
+        },
+        "acc=16 block=512 regs/thread=36 blocks/SM=2 limiter=warps": {
+          "value": 0.7761760056018829,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.2948126026849572
+        },
+        "acc=16 block=1024 regs/thread=36 blocks/SM=1 limiter=warps": {
+          "value": 0.7736800014972687,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.23155852478069355
+        },
+        "acc=40 block=32 regs/thread=64 blocks/SM=16 limiter=blocks": {
+          "value": 0.9809600114822388,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.40409017249789153
+        },
+        "acc=40 block=64 regs/thread=64 blocks/SM=16 limiter=blocks": {
+          "value": 1.9429759979248047,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 4.392671136860175
+        },
+        "acc=40 block=128 regs/thread=64 blocks/SM=8 limiter=warps": {
+          "value": 1.9401600360870361,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 4.5640974930329
+        },
+        "acc=40 block=256 regs/thread=64 blocks/SM=4 limiter=warps": {
+          "value": 1.9290080070495605,
+          "units": "ms",
+          "valid": false,
+          "stddev_pct_of_median": 5.748220819035336
+        },
+        "acc=40 block=512 regs/thread=64 blocks/SM=2 limiter=warps": {
+          "value": 1.9306559562683105,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 4.529506704952205
+        },
+        "acc=40 block=1024 regs/thread=64 blocks/SM=1 limiter=warps": {
+          "value": 1.9341920018196106,
+          "units": "ms",
+          "valid": false,
+          "stddev_pct_of_median": 5.2922770685802885
+        },
+        "acc=72 block=32 regs/thread=96 blocks/SM=16 limiter=blocks": {
+          "value": 1.7609919905662537,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.5380921952491493
+        },
+        "acc=72 block=64 regs/thread=96 blocks/SM=10 limiter=registers": {
+          "value": 2.621056079864502,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 4.961699379666959
+        },
+        "acc=72 block=128 regs/thread=96 blocks/SM=5 limiter=registers": {
+          "value": 2.1888480186462402,
+          "units": "ms",
+          "valid": false,
+          "stddev_pct_of_median": 5.438542795652587
+        },
+        "acc=72 block=256 regs/thread=96 blocks/SM=2 limiter=registers": {
+          "value": 1.7382879853248596,
+          "units": "ms",
+          "valid": true,
+          "stddev_pct_of_median": 0.16206106251263389
+        },
+        "acc=72 block=512 regs/thread=96 blocks/SM=1 limiter=registers": {
+          "value": 1.7402080297470093,
+          "units": "ms",
+          "valid": false,
+          "stddev_pct_of_median": 5.198770938621667
+        }
+      },
+      "git_commit": "89be53efc45d50fdc0d64d2dfec3d953c1c48bf0",
+      "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+      "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+      "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75"
+    }
+  },
+  "all_nine_ran": true,
+  "failed": [],
+  "invalid": [
+    "gpu_bandwidth",
+    "cpu_cache_ladder",
+    "cpu_simd_peak",
+    "host_device_transfer",
+    "cublas_sgemm_ref",
+    "kernel_launch_overhead",
+    "occupancy_sweep"
+  ],
+  "findings": {
+    "shared_versus_global": {
+      "available": true,
+      "global_gb_per_s": 172.1702505093598,
+      "shared_gb_per_s": 3087.4523750323256,
+      "shared_over_global": 17.9325543518593,
+      "finding": "shared memory bandwidth exceeds global memory bandwidth, as expected for on-chip storage"
+    }
+  }
+}

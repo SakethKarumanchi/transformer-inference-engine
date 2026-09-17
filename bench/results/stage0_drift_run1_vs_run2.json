@@ -1,0 +1,96 @@
+{
+  "tolerance_pct": 5.0,
+  "drifted": [
+    {
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=134217728 B, 268435456 B read per sample",
+      "stage0_value": 15.994390547527951,
+      "current_value": 18.303249420385995,
+      "delta": 2.3088588728580444,
+      "delta_pct": 14.43542888362755
+    },
+    {
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=16384 B, 268435456 B read per sample",
+      "stage0_value": 113.23285006817828,
+      "current_value": 127.01592504376859,
+      "delta": 13.78307497559031,
+      "delta_pct": 12.172328937487157
+    },
+    {
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=524288 B, 268435456 B read per sample",
+      "stage0_value": 64.48125294514615,
+      "current_value": 59.79250375661942,
+      "delta": -4.688749188526735,
+      "delta_pct": 7.271492060669833
+    },
+    {
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=8192 B, 268435456 B read per sample",
+      "stage0_value": 119.31260128461851,
+      "current_value": 127.3775533764522,
+      "delta": 8.064952091833689,
+      "delta_pct": 6.759514087363547
+    },
+    {
+      "benchmark": "cublas_sgemm_ref",
+      "configuration": "decode ffn_down M=1 N=768 K=3072",
+      "stage0_value": 55.960532916132856,
+      "current_value": 61.658372135500514,
+      "delta": 5.697839219367658,
+      "delta_pct": 10.181888774910199
+    },
+    {
+      "benchmark": "cublas_sgemm_ref",
+      "configuration": "prefill attn_output_projection M=32 N=768 K=768",
+      "stage0_value": 576.1406291091403,
+      "current_value": 659.5739454102041,
+      "delta": 83.43331630106388,
+      "delta_pct": 14.481415141659596
+    },
+    {
+      "benchmark": "cublas_sgemm_ref",
+      "configuration": "prefill ffn_down M=16 N=768 K=3072",
+      "stage0_value": 459.1409830216744,
+      "current_value": 498.31998329066363,
+      "delta": 39.17900026898923,
+      "delta_pct": 8.533108939904789
+    },
+    {
+      "benchmark": "cublas_sgemm_ref",
+      "configuration": "prefill ffn_up M=16 N=3072 K=768",
+      "stage0_value": 425.0600842571172,
+      "current_value": 376.4033186012709,
+      "delta": -48.6567656558463,
+      "delta_pct": 11.447032421518557
+    },
+    {
+      "benchmark": "cublas_sgemm_ref",
+      "configuration": "prefill qkv_projection M=16 N=2304 K=768",
+      "stage0_value": 359.2471900991319,
+      "current_value": 438.69392784436303,
+      "delta": 79.44673774523113,
+      "delta_pct": 22.11478333993603
+    },
+    {
+      "benchmark": "cublas_sgemm_ref",
+      "configuration": "prefill qkv_projection M=256 N=2304 K=768",
+      "stage0_value": 1453.7755631777327,
+      "current_value": 1536.041623483489,
+      "delta": 82.26606030575635,
+      "delta_pct": 5.6587868436813755
+    },
+    {
+      "benchmark": "kernel_launch_overhead",
+      "configuration": "sync per launch (launch to completion)",
+      "stage0_value": 14.049000000113665,
+      "current_value": 13.103600000249571,
+      "delta": -0.9453999998640938,
+      "delta_pct": 6.729304575816393
+    }
+  ],
+  "appeared": [],
+  "disappeared": [],
+  "machine_unchanged": false
+}

@@ -1,0 +1,43 @@
+# Build artifacts
+build/
+out/
+*.obj
+*.o
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.ptx
+*.cubin
+*.sass
+*.fatbin
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Testing/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Profiler output
+profile/
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+*.sqlite
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# NOTE: bench/results/ is deliberately NOT ignored. Those JSON files are
+# deliverables that the Stage 10 performance model reads directly.
