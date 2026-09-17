@@ -19,6 +19,52 @@ Mark each: `unread` → `read` → `can explain` → `can defend a follow-up`.
 - Why theoretical peak bandwidth is never reached, and what the shortfall comes from
 - Amdahl's law across a staged optimization sequence
 
+## Stage 0 — Instrumenting the machine
+- Why a spec sheet is not a measurement, and what the gap is made of on a power- and thermally-limited part `unread`
+- Boost clock versus sustained clock: why a card that advertises 1485 MHz settles at 1365 MHz under load `unread`
+- Telling thermal governance from power limiting by watching power draw and clock move together or apart `unread`
+- Clock locking as a measurement instrument rather than a performance setting — `nvidia-smi -lgc`, why pinning the minimum as well as the maximum removes the warmup problem entirely `unread`
+- Why a locked clock at a *lower* frequency produces better science than an unlocked clock at a higher one `unread`
+- GPU throttle reason bitmasks: `sw_power_cap`, `sw_thermal_slowdown`, `hw_slowdown`, `gpu_idle`, and what each one tells you `unread`
+- Median versus mean, and standard deviation as a fraction of median as a validity criterion rather than a summary statistic `unread`
+- Why a single interrupted sample invalidates a run, and why averaging it away is falsification `unread`
+- The noise floor: measuring it from two full suite runs, and why it sets the minimum claimable speedup `unread`
+- Choosing a percentile rather than a mean or a max when adopting a noise floor, and what each choice licenses `unread`
+- Warmup: what it is actually warming — clock ramp, caches, TLB, the driver's launch path `unread`
+- Monotonic counters versus wall clock; `QueryPerformanceCounter` on Windows as the equivalent of `clock_gettime(CLOCK_MONOTONIC)` `unread`
+- CUDA event timing and why an explicit device synchronize must precede reading the timer `unread`
+- Theoretical memory bandwidth from first principles: transfers per clock x memory clock x bus width / 8 `unread`
+- Why a copy benchmark reaching 89% of theoretical is a good result, and what the missing 11% is `unread`
+- Corroborating an event-timed bandwidth figure with DRAM throughput counters, and why agreement between two independent methods is the actual evidence `unread`
+- Theoretical FP32 peak from core count x clock x 2, and why the core count is a spec-table lookup rather than a queryable property `unread`
+- Why a register-resident FMA loop can reach 99.7% of theoretical while nothing else can `unread`
+- The cache ladder: reading plateau edges off a bandwidth-versus-working-set curve to infer effective cache sizes `unread`
+- Why measured cache edges can disagree with what the OS reports, and which one later work should use `unread`
+- Single-channel versus dual-channel memory, and why one DIMM halves the CPU memory ceiling `unread`
+- Pinned versus pageable host memory, and why pinned is roughly twice as fast in both directions `unread`
+- Kernel launch overhead as a fixed additive term, and why back-to-back launches and synchronize-per-launch are different numbers that answer different questions `unread`
+- Shared memory bank conflicts: why a 32-way conflict costs roughly 30x, measured rather than assumed `unread`
+- Occupancy: theoretical from `cudaOccupancyMaxActiveBlocksPerMultiprocessor` versus achieved from the profiler, and why they must never be conflated `unread`
+- Register pressure as an occupancy limiter, and computing which limiter binds from queried device properties `unread`
+- Why GEMM throughput is non-monotonic in M on a small-SM device, and what a partially filled final wave costs `unread`
+- Why the prefill denominator must be quoted per shape rather than as a single number `unread`
+- Prefill versus decode as different shapes of the same GEMM, and why M=1 must never be averaged in with M=512 `unread`
+- Hardware counters: what `sm__warps_active.avg.pct_of_peak_sustained_active`, `lts__t_sector_hit_rate.pct`, `dram__bytes_read.sum.per_second` and the warp-stall ratios actually measure `unread`
+- Warp stall reasons as a diagnostic vocabulary, and why `long_scoreboard` dominating means waiting on global memory `unread`
+- Resolving profiler metric names against the installed tool version instead of hardcoding them, and why hardcoded names rot `unread`
+- Why an uncollected counter must be reported as unavailable rather than as zero `unread`
+- Determining a hardware capability empirically when no API exposes it — the WMMA/HMMA probe `unread`
+- The limits of counter evidence: why `sm__pipe_tensor_cycles_active` proves a pipe exists but establishes no throughput `unread`
+- Distinguishing a permission limit from a device-capability limit by exit code and message text `unread`
+- VRAM integrity testing with known bit patterns, and why consumer GDDR6 without ECC fails silently rather than loudly `unread`
+- Compute determinism as a hardware check rather than a code check `unread`
+- The environment fingerprint: what must be frozen for two measurements taken weeks apart to be comparable `unread`
+- Why background processes show up as invalid runs rather than as uniformly slower runs `unread`
+- Provenance tagging — `[queried]`, `[measured]`, `[spec]`, `[derived]` — as a discipline that makes a document auditable `unread`
+- Why a field left empty with a stated reason is more valuable than a plausible number `unread`
+- Toolchain pinning: why CUDA rejects newer MSVC toolsets, and why `-allow-unsupported-compiler` is not a fix `unread`
+- Why the profiler, not the compiler, decided native Windows over WSL2 for this project `unread`
+
 ## Stage 1 — Weights and tokenizer
 - FP32 layout; what precision means in bits
 - Why floating-point addition is not associative, and why bit-exact comparison across implementations is therefore impossible

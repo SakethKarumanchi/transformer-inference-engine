@@ -39,11 +39,26 @@ Any deviation is recorded in that stage's `MEASUREMENTS.md` entry. An unrecorded
 
 Stage 0 §5.4 establishes the run-to-run spread of the microbenchmark suite. That spread is the noise floor. **No stage may claim a speedup smaller than the noise floor.** A measured 3% improvement on a machine with 5% run-to-run spread is not an improvement; it is noise, and reporting it as a result is the kind of claim that collapses under a single follow-up question. Where a stage's measured change falls inside the noise floor, report it as "no measurable change" and say what the floor is.
 
+**Measured noise floor for this machine, set by Stage 0 on 2026-09-17: 4.4%.**
+
+Measurement behind it: the full microbenchmark suite was run twice in one session under the locked clock regime (`bench/results/run1/` and `bench/results/run2/`), and the per-configuration spread computed as `|b - a| / mean(a, b) * 100` by `machine_state.py spread_percent`. Over the 49 configurations that were VALID in both runs: **median 0.317%, mean 1.407%, 90th percentile 4.401%, maximum 19.913%.** Over all 96 configurations regardless of validity: mean 2.059%, maximum 19.913%. Full output in `bench/results/machine_state_5_4_timing_spread.json`.
+
+The adopted floor is the 90th percentile, 4.401%, rounded to **4.4%**, rather than the median. The median of 0.317% describes the best-behaved configurations and would license claims this machine cannot actually support; the maximum of 19.913% comes from a single small-M GEMM and would suppress real results everywhere else.
+
+Two qualifications travel with the figure and must be repeated wherever it is used:
+
+1. **Small-M GEMM shapes are materially noisier than everything else.** The worst spreads all came from `cublas_sgemm_ref` at M = 16 to 32, where launch and setup latency dominate the arithmetic. A claim about **decode**-shaped work (M = 1) needs a wider margin than 4.4%; a claim about **prefill**-shaped work at large M is comfortably inside it.
+2. **This floor was measured on a machine with irreducible background load** — a kernel-mode anti-cheat driver, an audio driver that hooks process creation, and Windows Defender real-time scanning, none of which could be closed. It is a floor for *this* machine as it actually runs, which is the right floor for this project, but it is not a floor for an idle headless machine.
+
 ### 4.2 Warmup adjustment
 
 The default of 5 warmup iterations assumes clocks settle quickly. Stage 0 §5.3 measures how long clocks actually take to stabilize on this machine. If stabilization takes longer than 5 iterations of the workload being timed, warmup is increased to cover it and the adjusted value is recorded here and used everywhere.
 
-Adjusted warmup for this machine: ______ *(set in Stage 0)*
+Adjusted warmup for this machine: **25 iterations** *(set in Stage 0, 2026-09-17)*
+
+Arithmetic behind it. Stage 0 §5.3 measured clock stabilization under the locked regime at **0.075 s**. The reference timed workload is `gpu_bandwidth`, whose measured median iteration is **3.118 ms**. The protocol default of 5 warmup iterations covers 5 x 3.118 ms = **15.6 ms**, which is *less* than 0.075 s and therefore insufficient by the rule above. 25 warmup iterations cover 25 x 3.118 ms = **77.9 ms**, which exceeds 0.075 s. 25 was used for every configuration in Stage 0 and is used everywhere from here.
+
+A note on why this is conservative rather than strictly required: the project locks the graphics clock with `nvidia-smi -lgc 1365,1365`, which pins the **minimum** as well as the maximum, so the card already sits at its operating clock before the first warmup iteration and there is no boost ramp to warm through — the 5.3 log recorded 1365 MHz on 122 of 122 samples including idle. The 25 iterations still do useful work warming caches, TLBs and the driver's kernel-launch path. Were the lock ever absent, the unlocked card's stabilization figure of 3.502 s would apply instead, and it understates the problem badly: the unlocked card does not stabilize at all, it decays from 1815 MHz to 1365 MHz over five minutes. **No warmup value can rescue a measurement taken on an unlocked clock here; the lock is not optional.**
 
 ## 5. Correctness gate
 

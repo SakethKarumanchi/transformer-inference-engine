@@ -1,0 +1,285 @@
+{
+  "vram_integrity": {
+    "ok": true,
+    "buffer_mib": 2048,
+    "repeats": 3,
+    "patterns": [
+      "0x0",
+      "0xff",
+      "0xaa",
+      "0x55"
+    ],
+    "rounds": [
+      {
+        "round": 0,
+        "pattern": "0x0",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 0,
+        "pattern": "0xff",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 0,
+        "pattern": "0xaa",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 0,
+        "pattern": "0x55",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 1,
+        "pattern": "0x0",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 1,
+        "pattern": "0xff",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 1,
+        "pattern": "0xaa",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 1,
+        "pattern": "0x55",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 2,
+        "pattern": "0x0",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 2,
+        "pattern": "0xff",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 2,
+        "pattern": "0xaa",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      },
+      {
+        "round": 2,
+        "pattern": "0x55",
+        "bit_exact": true,
+        "sampled_prefix": {
+          "ok": true,
+          "first_bad_offset": null,
+          "bad_bytes": 0,
+          "reason": null
+        }
+      }
+    ],
+    "reason": null
+  },
+  "compute_determinism": {
+    "ok": true,
+    "shape": {
+      "M": 768,
+      "N": 2304,
+      "K": 768
+    },
+    "trials": 2,
+    "reason": null
+  },
+  "background_load": {
+    "gpu_processes": [
+      "pid, process_name, used_gpu_memory [MiB]",
+      "1564, C:\\Windows\\System32\\dwm.exe, [N/A]",
+      "10368, C:\\Windows\\explorer.exe, [N/A]",
+      "6396, C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\CrossDeviceResume.exe, [N/A]",
+      "13960, C:\\Windows\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartMenuExperienceHost.exe, [N/A]",
+      "15632, C:\\Windows\\SystemApps\\Microsoft.LockApp_cw5n1h2txyewy\\LockApp.exe, [N/A]",
+      "13732, C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\TextInputHost.exe, [N/A]",
+      "12852, C:\\Program Files\\Riot Vanguard\\vgtray.exe, [N/A]",
+      "10144, C:\\Program Files (x86)\\MSI\\MSI NBFoundation Service\\OmApSvcBroker.exe, [N/A]",
+      "12948, C:\\Windows\\System32\\NahimicSvc64.exe, [N/A]",
+      "1044, C:\\Windows\\System32\\ApplicationFrameHost.exe, [N/A]",
+      "13468, C:\\Program Files\\WindowsApps\\A-Volute.Nahimic_1.10.15.0_x64__w2gh52qy24etm\\Nahimic3.exe, [N/A]",
+      "18012, C:\\Program Files\\WindowsApps\\Claude_2.110.1.0_x64__pzs8sxrjxfjjc\\app\\claude.exe, [N/A]",
+      "12040, C:\\Program Files\\WindowsApps\\Claude_2.110.1.0_x64__pzs8sxrjxfjjc\\app\\claude.exe, [N/A]",
+      "2392, C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\SearchHost.exe, [N/A]",
+      "13552, C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\153.0.4234.32\\msedgewebview2.exe, [N/A]",
+      "14876, C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe, [N/A]",
+      "6640, C:\\Windows\\System32\\ShellHost.exe, [N/A]",
+      "18356, C:\\Users\\saket\\AppData\\Local\\Programs\\Python\\Python314\\python.exe, [N/A]"
+    ],
+    "top_cpu_processes": [
+      {
+        "Name": "System",
+        "Id": 4,
+        "CPU": 361.25
+      },
+      {
+        "Name": "MsMpEng",
+        "Id": 6140,
+        "CPU": 328.90625
+      },
+      {
+        "Name": "python",
+        "Id": 18356,
+        "CPU": 146.515625
+      },
+      {
+        "Name": "WmiPrvSE",
+        "Id": 5232,
+        "CPU": 109.859375
+      },
+      {
+        "Name": "svchost",
+        "Id": 4540,
+        "CPU": 103.359375
+      },
+      {
+        "Name": "dwm",
+        "Id": 1564,
+        "CPU": 99.4375
+      },
+      {
+        "Name": "Memory Compression",
+        "Id": 2952,
+        "CPU": 57.078125
+      },
+      {
+        "Name": "claude",
+        "Id": 18748,
+        "CPU": 55.671875
+      },
+      {
+        "Name": "claude",
+        "Id": 7532,
+        "CPU": 47.625
+      },
+      {
+        "Name": "explorer",
+        "Id": 10368,
+        "CPU": 31.71875
+      },
+      {
+        "Name": "conhost",
+        "Id": 12264,
+        "CPU": 31.375
+      },
+      {
+        "Name": "claude",
+        "Id": 10948,
+        "CPU": 25.59375
+      },
+      {
+        "Name": "claude",
+        "Id": 18012,
+        "CPU": 22.28125
+      },
+      {
+        "Name": "vgc",
+        "Id": 5768,
+        "CPU": 17.15625
+      },
+      {
+        "Name": "nvcontainer",
+        "Id": 18860,
+        "CPU": 13.453125
+      },
+      {
+        "Name": "svchost",
+        "Id": 3308,
+        "CPU": 12.8125
+      },
+      {
+        "Name": "SDXHelper",
+        "Id": 13364,
+        "CPU": 12.28125
+      },
+      {
+        "Name": "SearchIndexer",
+        "Id": 9516,
+        "CPU": 12.125
+      },
+      {
+        "Name": "svchost",
+        "Id": 1456,
+        "CPU": 10.625
+      },
+      {
+        "Name": "svchost",
+        "Id": 2852,
+        "CPU": 9.5
+      }
+    ],
+    "overlay_and_monitoring_software": "MSI.CentralServer,MSI_Central_Service,MSI_Companion_Service,MSIAPService,MSIService"
+  },
+  "timing_reproducibility": "run bench/microbench/run_all.py twice and pass the two consolidated files to spread_percent()"
+}
