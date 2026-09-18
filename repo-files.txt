@@ -11,6 +11,7 @@ PERSISTENT.md
 PROJECT.md
 README.md
 TECHNICAL_SPEC.md
+bench/analyze_variance.py
 bench/machine_state.py
 bench/microbench/bench_common.cu
 bench/microbench/bench_common.h
@@ -35,6 +36,7 @@ bench/results/gpu_bandwidth.json
 bench/results/gpu_fp32_peak.json
 bench/results/host_device_transfer.json
 bench/results/kernel_launch_overhead.json
+bench/results/machine_fingerprint.json
 bench/results/machine_state_5_3_sustained.json
 bench/results/machine_state_5_3_sustained_locked.json
 bench/results/machine_state_5_4_stability.json
@@ -65,6 +67,16 @@ bench/results/run2/stage0_consolidated.json
 bench/results/shared_mem_bandwidth.json
 bench/results/stage0_consolidated.json
 bench/results/stage0_drift_run1_vs_run2.json
+bench/results/stage0b/run1/cpu_cache_ladder.json
+bench/results/stage0b/run1/cpu_cache_ladder_cpu_frequency_trace.json
+bench/results/stage0b/run1/cpu_simd_peak.json
+bench/results/stage0b/run1/cpu_simd_peak_cpu_frequency_trace.json
+bench/results/stage0b/run2/cpu_cache_ladder.json
+bench/results/stage0b/run2/cpu_cache_ladder_cpu_frequency_trace.json
+bench/results/stage0b/run2/cpu_simd_peak.json
+bench/results/stage0b/run2/cpu_simd_peak_cpu_frequency_trace.json
+bench/results/stage0b/stage0b_consolidated.json
+bench/results/stage0b/variance_analysis.json
 dashboard/.gitkeep
 model/results/.gitkeep
 reference/.gitkeep
@@ -74,6 +86,7 @@ scripts/build_info.h.in
 scripts/git_info.cmake
 src/cuda/.gitkeep
 src/gemm/.gitkeep
+tests/test_analyze_variance.py
 tests/test_bench_common.cu
 tests/test_cpu_cache_ladder.cu
 tests/test_cpu_simd_peak.cu

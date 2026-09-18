@@ -65,6 +65,26 @@ Mark each: `unread` → `read` → `can explain` → `can defend a follow-up`.
 - Toolchain pinning: why CUDA rejects newer MSVC toolsets, and why `-allow-unsupported-compiler` is not a fix `unread`
 - Why the profiler, not the compiler, decided native Windows over WSL2 for this project `unread`
 
+## Stage 0b — Diagnosing an invalid measurement
+- **Deviation direction as a diagnostic.** Upward excursions from a clean floor can only be contention; downward excursions from a ceiling cannot be contention at all, because interference never makes a sample faster. Reading direction before reading magnitude separates a machine problem from a benchmark problem for free `unread`
+- Robust statistics on timing data: median absolute deviation, the modified z-score, and why the standard deviation cannot be used to find the samples that inflated it `unread`
+- Distinguishing a spike-carried distribution from a broadly dispersed one: share of total squared deviation held by flagged samples, versus the interquartile range, which ignores the tails entirely `unread`
+- Why trimmed statistics are a diagnostic and never a result, and how to structure an output file so a trimmed number cannot be mistaken for a measurement `unread`
+- SMT (hyper-threading) and per-core cache: why L1d and L2 are per-core while L3 is shared, and what a thread migration costs in re-warm `unread`
+- Thread affinity and scheduling priority as measurement conditions, not tuning knobs — and why a single-threaded benchmark that does not say where its thread ran is sampling more than one machine `unread`
+- `GetLogicalProcessorInformationEx` and logical-to-physical core mapping: why the conventional interleaving is a convention rather than a guarantee `unread`
+- Windows performance counters through PDH: rate counters as differentials, why `% Processor Performance` is live and APERF/MPERF-derived while `Processor Frequency` is a static nominal read `unread`
+- Proving a telemetry source is live before trusting it: apply a load, require the reading to move and to recover, and measure the per-probe cost against the sample duration it will be used alongside `unread`
+- Why a probe costing milliseconds cannot instrument a millisecond measurement, and why telemetry belongs outside the timed bracket under all circumstances `unread`
+- CPU hardware performance counters on Windows: the ETW PMU path through the Windows Performance Toolkit (`xperf -pmcsources`), what a Comet Lake PMU exposes, and the limit of 7 simultaneously selectable sources `unread`
+- Why an observability tool is itself a load, and when the trace is worth the condition change it causes `unread`
+- Shared-L3 contention as a measurement condition: why a working set sized at exactly the L3 capacity is the worst case, and why its bandwidth can exceed the DRAM ceiling `unread`
+- Single-channel versus dual-channel memory, and reading a measured figure against the channel-count-derived ceiling `unread`
+- Sampling arithmetic: why one sample at +50% among 30 produces a standard deviation near 9.3% of median, and why sub-100-microsecond configurations therefore cannot pass a 5% rule reliably `unread`
+- Code provenance versus condition provenance: why `BENCHMARK_PROTOCOL.md` §4 voids a comparison across either, and why a partial re-run conceals a condition change rather than avoiding it `unread`
+- Verifying a fix by its predicted signature rather than by its headline number — the new median landing on the old *minimum* is evidence about mechanism that a smaller standard deviation alone is not `unread`
+- Writing up a diagnosis that the outcome falsified, and stating which alternatives the evidence still does not separate `unread`
+
 ## Stage 1 — Weights and tokenizer
 - FP32 layout; what precision means in bits
 - Why floating-point addition is not associative, and why bit-exact comparison across implementations is therefore impossible

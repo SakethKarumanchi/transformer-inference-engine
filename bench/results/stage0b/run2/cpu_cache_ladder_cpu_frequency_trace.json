@@ -1,0 +1,1079 @@
+{
+  "interval_s": 0.02,
+  "affinity": {
+    "available": true,
+    "mask": 240,
+    "mask_hex": "0xf0",
+    "allowed_logical_cpus": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "excluded_logical_cpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "requested_exclusions": [
+      0,
+      2
+    ],
+    "n_logical_cpus": 8,
+    "logical_to_physical": {
+      "0": 0,
+      "1": 0,
+      "2": 1,
+      "3": 1,
+      "4": 2,
+      "5": 2,
+      "6": 3,
+      "7": 3
+    },
+    "smt_siblings": {
+      "0": [
+        1
+      ],
+      "2": [
+        3
+      ]
+    }
+  },
+  "affinity_applied": {
+    "ok": true,
+    "reason": null,
+    "previous_mask_hex": "0xff"
+  },
+  "n_samples": 167,
+  "elapsed_s": 5.276533500000369,
+  "per_probe_us": 39.2,
+  "sampler_duty_cycle_of_one_core": 0.003721989067253838,
+  "sources_unavailable": [],
+  "summary": {
+    "pdh_processor_performance_total": {
+      "n": 167,
+      "min": 159.36575938154292,
+      "max": 177.24111762676785,
+      "median": 171.69461735627976
+    },
+    "pdh_performance_limit_total": {
+      "n": 167,
+      "min": 100.0,
+      "max": 100.0,
+      "median": 100.0
+    },
+    "pdh_processor_frequency_total": {
+      "n": 167,
+      "min": 2496.0,
+      "max": 2496.0,
+      "median": 2496.0
+    }
+  },
+  "samples": [
+    {
+      "t_s": 0.000294,
+      "pdh_processor_performance_total": 168.70238095238096,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.019444,
+      "pdh_processor_performance_total": 166.03080568720378,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.051158,
+      "pdh_processor_performance_total": 168.91644840230487,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.082951,
+      "pdh_processor_performance_total": 167.15735862311206,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.114715,
+      "pdh_processor_performance_total": 163.47638376383765,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.146768,
+      "pdh_processor_performance_total": 163.95412490362375,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.17876,
+      "pdh_processor_performance_total": 163.57340507302075,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.209299,
+      "pdh_processor_performance_total": 161.95601514710165,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.241142,
+      "pdh_processor_performance_total": 164.36719049444233,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.272794,
+      "pdh_processor_performance_total": 161.64605873261206,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.304555,
+      "pdh_processor_performance_total": 163.26910074374578,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.33638,
+      "pdh_processor_performance_total": 163.6793428658351,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.368191,
+      "pdh_processor_performance_total": 165.63390441839496,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.399896,
+      "pdh_processor_performance_total": 164.0737704918033,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.430935,
+      "pdh_processor_performance_total": 162.16074237181505,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.462329,
+      "pdh_processor_performance_total": 166.78227060653188,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.493998,
+      "pdh_processor_performance_total": 166.31431590068675,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.525973,
+      "pdh_processor_performance_total": 166.10312315851502,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.557606,
+      "pdh_processor_performance_total": 164.42017045454546,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.588719,
+      "pdh_processor_performance_total": 165.52284417549168,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.620393,
+      "pdh_processor_performance_total": 165.09837335398916,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.651987,
+      "pdh_processor_performance_total": 162.07852998065763,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.684648,
+      "pdh_processor_performance_total": 159.36575938154292,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.716128,
+      "pdh_processor_performance_total": 162.98012552301256,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.747785,
+      "pdh_processor_performance_total": 161.7128347183749,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.779769,
+      "pdh_processor_performance_total": 163.49305555555554,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.811367,
+      "pdh_processor_performance_total": 164.29929707732148,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.843297,
+      "pdh_processor_performance_total": 166.48964285714285,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.874809,
+      "pdh_processor_performance_total": 170.11092208234092,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.906625,
+      "pdh_processor_performance_total": 172.06084656084656,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.937467,
+      "pdh_processor_performance_total": 173.42970927917165,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 0.969132,
+      "pdh_processor_performance_total": 166.90304107424961,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.001099,
+      "pdh_processor_performance_total": 171.93320848938828,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.03332,
+      "pdh_processor_performance_total": 171.2737896494157,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.064572,
+      "pdh_processor_performance_total": 172.0309155766944,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.096582,
+      "pdh_processor_performance_total": 171.0588430851064,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.12854,
+      "pdh_processor_performance_total": 174.74565560821486,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.160256,
+      "pdh_processor_performance_total": 172.17923076923077,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.192071,
+      "pdh_processor_performance_total": 172.74323090964404,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.223772,
+      "pdh_processor_performance_total": 171.67512077294685,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.255512,
+      "pdh_processor_performance_total": 171.19848197343453,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.28729,
+      "pdh_processor_performance_total": 172.62259709690073,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.319458,
+      "pdh_processor_performance_total": 173.21635063723966,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.35148,
+      "pdh_processor_performance_total": 171.0939194975735,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.382115,
+      "pdh_processor_performance_total": 174.64426588750914,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.41391,
+      "pdh_processor_performance_total": 169.64004457652302,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.445567,
+      "pdh_processor_performance_total": 173.52906063462143,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.477251,
+      "pdh_processor_performance_total": 171.80352480417756,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.509984,
+      "pdh_processor_performance_total": 170.87258827812158,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.541636,
+      "pdh_processor_performance_total": 170.45617816091954,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.572863,
+      "pdh_processor_performance_total": 174.36089280100597,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.605237,
+      "pdh_processor_performance_total": 171.69461735627976,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.636833,
+      "pdh_processor_performance_total": 172.21750764525993,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.667809,
+      "pdh_processor_performance_total": 170.1370993335449,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.699504,
+      "pdh_processor_performance_total": 173.65967016491754,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.731434,
+      "pdh_processor_performance_total": 174.5587591240876,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.763153,
+      "pdh_processor_performance_total": 176.13545100389572,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.794679,
+      "pdh_processor_performance_total": 174.05975692099932,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.826996,
+      "pdh_processor_performance_total": 176.16023635731665,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.857798,
+      "pdh_processor_performance_total": 174.5765625,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.889831,
+      "pdh_processor_performance_total": 173.7880333163352,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.921727,
+      "pdh_processor_performance_total": 169.89958759189528,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.953698,
+      "pdh_processor_performance_total": 161.12393405343946,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 1.985683,
+      "pdh_processor_performance_total": 171.05231443440152,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.017487,
+      "pdh_processor_performance_total": 168.96459585838343,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.049094,
+      "pdh_processor_performance_total": 170.0190114068441,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.080159,
+      "pdh_processor_performance_total": 171.90238480194017,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.111949,
+      "pdh_processor_performance_total": 170.89937636945896,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.143936,
+      "pdh_processor_performance_total": 173.63647959183675,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.175828,
+      "pdh_processor_performance_total": 171.54424610710217,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.207973,
+      "pdh_processor_performance_total": 171.89249720044793,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.239624,
+      "pdh_processor_performance_total": 170.2210134554824,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.27127,
+      "pdh_processor_performance_total": 174.13776091081593,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.302688,
+      "pdh_processor_performance_total": 171.36140690545338,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.333941,
+      "pdh_processor_performance_total": 170.21000935453696,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.36509,
+      "pdh_processor_performance_total": 172.40158615717377,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.396937,
+      "pdh_processor_performance_total": 171.4349750968456,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.428658,
+      "pdh_processor_performance_total": 172.12079738173162,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.460331,
+      "pdh_processor_performance_total": 171.7906976744186,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.492011,
+      "pdh_processor_performance_total": 170.15078183172002,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.524045,
+      "pdh_processor_performance_total": 172.43076548025354,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.555775,
+      "pdh_processor_performance_total": 170.68364611260054,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.587348,
+      "pdh_processor_performance_total": 172.99762681696825,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.619125,
+      "pdh_processor_performance_total": 170.8640776699029,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.650974,
+      "pdh_processor_performance_total": 172.7318757192175,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.683061,
+      "pdh_processor_performance_total": 171.17859272510435,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.715064,
+      "pdh_processor_performance_total": 174.12230483271375,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.746713,
+      "pdh_processor_performance_total": 174.35802009676217,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.778371,
+      "pdh_processor_performance_total": 174.97225891677675,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.810345,
+      "pdh_processor_performance_total": 174.79096201829776,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.841788,
+      "pdh_processor_performance_total": 172.10464716006885,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.872986,
+      "pdh_processor_performance_total": 171.56220472440944,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.90476,
+      "pdh_processor_performance_total": 170.77032108764826,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.936582,
+      "pdh_processor_performance_total": 174.93259232699893,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.968233,
+      "pdh_processor_performance_total": 177.11778682959945,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 2.999908,
+      "pdh_processor_performance_total": 171.21211139896374,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.031513,
+      "pdh_processor_performance_total": 171.63170613823104,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.062716,
+      "pdh_processor_performance_total": 170.93558606124603,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.093809,
+      "pdh_processor_performance_total": 172.9268960125098,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.125702,
+      "pdh_processor_performance_total": 167.69001447178002,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.157698,
+      "pdh_processor_performance_total": 176.16563523844195,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.189861,
+      "pdh_processor_performance_total": 171.56602822580646,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.221337,
+      "pdh_processor_performance_total": 169.44317822095599,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.253112,
+      "pdh_processor_performance_total": 173.2432612312812,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.284714,
+      "pdh_processor_performance_total": 171.95509058433274,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.317009,
+      "pdh_processor_performance_total": 171.20719370550768,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.3479,
+      "pdh_processor_performance_total": 171.82438016528926,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.379965,
+      "pdh_processor_performance_total": 171.99837925445706,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.411767,
+      "pdh_processor_performance_total": 172.1420476010578,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.444222,
+      "pdh_processor_performance_total": 171.28452463566967,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.475709,
+      "pdh_processor_performance_total": 172.00510970844604,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.50748,
+      "pdh_processor_performance_total": 170.88297520661158,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.538807,
+      "pdh_processor_performance_total": 171.99159663865547,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.570034,
+      "pdh_processor_performance_total": 171.0172839506173,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.601776,
+      "pdh_processor_performance_total": 172.94891304347826,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.633405,
+      "pdh_processor_performance_total": 171.09880995311937,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.66524,
+      "pdh_processor_performance_total": 171.52532123960697,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.696893,
+      "pdh_processor_performance_total": 172.1439371031146,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.728429,
+      "pdh_processor_performance_total": 171.46139216432104,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.760174,
+      "pdh_processor_performance_total": 171.5977229601518,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.791224,
+      "pdh_processor_performance_total": 172.3939114391144,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.822862,
+      "pdh_processor_performance_total": 174.61688790560473,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.854613,
+      "pdh_processor_performance_total": 175.80240174672488,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.886414,
+      "pdh_processor_performance_total": 174.86924493554326,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.918111,
+      "pdh_processor_performance_total": 174.94268257201048,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.949809,
+      "pdh_processor_performance_total": 175.2981171548117,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 3.981638,
+      "pdh_processor_performance_total": 176.5921658986175,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.012236,
+      "pdh_processor_performance_total": 169.8489221140473,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.043562,
+      "pdh_processor_performance_total": 174.75252282556463,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.075558,
+      "pdh_processor_performance_total": 174.30821187344472,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.107205,
+      "pdh_processor_performance_total": 175.9732972136223,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.138976,
+      "pdh_processor_performance_total": 170.11157253599114,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.170422,
+      "pdh_processor_performance_total": 174.0034548944338,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.201936,
+      "pdh_processor_performance_total": 170.41097922848664,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.234116,
+      "pdh_processor_performance_total": 171.92041147807254,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.265861,
+      "pdh_processor_performance_total": 172.04248366013073,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.297573,
+      "pdh_processor_performance_total": 171.58567096285066,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.329267,
+      "pdh_processor_performance_total": 171.2429801572445,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.361047,
+      "pdh_processor_performance_total": 171.9104938271605,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.392609,
+      "pdh_processor_performance_total": 171.4767870302137,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.424462,
+      "pdh_processor_performance_total": 172.243668457406,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.455491,
+      "pdh_processor_performance_total": 170.233984375,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.487483,
+      "pdh_processor_performance_total": 173.1281512605042,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.519324,
+      "pdh_processor_performance_total": 171.11503623188406,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.550337,
+      "pdh_processor_performance_total": 175.88951574988246,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.582313,
+      "pdh_processor_performance_total": 174.73638159751624,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.613793,
+      "pdh_processor_performance_total": 174.8725527831094,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.645831,
+      "pdh_processor_performance_total": 171.45338824410334,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.677436,
+      "pdh_processor_performance_total": 172.051593323217,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.709259,
+      "pdh_processor_performance_total": 172.89406528189912,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.740941,
+      "pdh_processor_performance_total": 175.72373989996152,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.77296,
+      "pdh_processor_performance_total": 175.00858208955225,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.804815,
+      "pdh_processor_performance_total": 176.15304347826088,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.83622,
+      "pdh_processor_performance_total": 174.73587740384616,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.868024,
+      "pdh_processor_performance_total": 175.76976906927922,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.899808,
+      "pdh_processor_performance_total": 175.63898916967509,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.930961,
+      "pdh_processor_performance_total": 174.94346070208138,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.962643,
+      "pdh_processor_performance_total": 175.10253542132736,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 4.994605,
+      "pdh_processor_performance_total": 174.180799402316,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.026936,
+      "pdh_processor_performance_total": 170.53489640130863,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.058439,
+      "pdh_processor_performance_total": 173.5080465461748,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.090057,
+      "pdh_processor_performance_total": 177.24111762676785,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.121711,
+      "pdh_processor_performance_total": 172.40660869565218,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.153583,
+      "pdh_processor_performance_total": 171.69147259674313,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.186177,
+      "pdh_processor_performance_total": 171.72108013937282,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.217667,
+      "pdh_processor_performance_total": 171.4301499605367,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    },
+    {
+      "t_s": 5.24928,
+      "pdh_processor_performance_total": 170.68384445147012,
+      "pdh_performance_limit_total": 100.0,
+      "pdh_processor_frequency_total": 2496.0
+    }
+  ],
+  "sampled_inside_any_timed_bracket": false,
+  "sampler_note": "sampled from a separate process while the benchmark ran; no probe can be inside the benchmark's timed bracket. The sampler is itself an added background load and is recorded as a run condition"
+}

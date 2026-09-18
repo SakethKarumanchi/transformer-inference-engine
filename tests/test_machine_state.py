@@ -147,5 +147,238 @@ class TestSpreadCalculation(unittest.TestCase):
         self.assertEqual(sorted(r["keys_missing_from_one_run"]), ["only_a", "only_b"])
 
 
+class TestTelemetrySourceClassification(unittest.TestCase):
+    """Stage 0b Phase 2. HARDWARE.md 5.3 records that Stage 0's CPU telemetry was
+    static and unusable -- a constant 2496 MHz and a constant package temperature
+    across every sample of both runs while CPU load varied between 4% and 36%.
+    The classifier exists so that failure cannot recur silently: a source is
+    reported live only when its own readings move."""
+
+    @staticmethod
+    def _flat(value, n=15):
+        return [value] * n
+
+    def test_a_source_whose_readings_never_change_is_static(self):
+        r = ms.classify_telemetry_source(
+            "fake_nominal_mhz",
+            self._flat(2496), self._flat(2496), self._flat(2496),
+            per_probe_us=6.0, unit="MHz")
+        self.assertFalse(r["live"])
+        self.assertEqual(r["verdict"], "static")
+        self.assertEqual(r["constant_value"], 2496)
+        self.assertIn("static nominal read", r["reason"])
+
+    def test_a_source_that_moves_under_load_and_returns_is_live(self):
+        idle = [172.1, 171.2, 173.0, 172.7, 169.9]
+        load = [143.7, 141.4, 142.7, 140.0, 141.4]
+        recovery = [167.3, 170.3, 170.9, 168.5, 170.0]
+        r = ms.classify_telemetry_source("fake_live", idle, load, recovery,
+                                         per_probe_us=12.5, unit="percent")
+        self.assertTrue(r["live"])
+        self.assertEqual(r["verdict"], "live")
+        self.assertIsNone(r["reason"])
+        self.assertGreater(r["load_shift_pct_of_idle_median"], 2.0)
+        self.assertEqual(r["phases"]["load"]["min"], 140.0)
+        self.assertEqual(r["phases"]["idle"]["max"], 173.0)
+
+    def test_a_source_that_barely_moves_is_not_called_live(self):
+        idle = [100.0, 100.1, 100.0, 99.9, 100.0]
+        load = [100.2, 100.1, 100.0, 100.1, 100.0]
+        recovery = [100.0, 100.0, 100.1, 99.9, 100.0]
+        r = ms.classify_telemetry_source("fake_barely", idle, load, recovery,
+                                         per_probe_us=6.0, unit="percent")
+        self.assertFalse(r["live"])
+        self.assertEqual(r["verdict"], "static")
+        self.assertIn("below the", r["reason"])
+
+    def test_the_per_probe_cost_is_recorded_on_every_verdict(self):
+        for idle, load, rec, cost in (
+                (self._flat(1), self._flat(1), self._flat(1), 6.0),
+                ([1, 2, 3], [9, 9, 9], [1, 2, 3], 12.5),
+                ([], [], [], 1360246.0)):
+            r = ms.classify_telemetry_source("s", idle, load, rec, per_probe_us=cost)
+            self.assertIn("per_probe_us", r)
+            self.assertEqual(r["per_probe_us"], cost)
+
+    def test_a_phase_with_no_readings_is_unavailable_not_invented(self):
+        r = ms.classify_telemetry_source("s", [1.0, 2.0], [], [1.0],
+                                         per_probe_us=6.0)
+        self.assertEqual(r["verdict"], "unavailable")
+        self.assertFalse(r["live"])
+        self.assertIn("load", r["reason"])
+        self.assertNotIn("phases", r)
+
+    def test_the_probe_cost_helper_returns_a_real_median(self):
+        calls = {"n": 0}
+
+        def fake_probe():
+            calls["n"] += 1
+
+        cost = ms.measure_probe_cost_us(fake_probe, calls=25)
+        self.assertEqual(calls["n"], 25)
+        self.assertIsInstance(cost, float)
+        self.assertGreaterEqual(cost, 0.0)
+
+
+class TestNoTelemetryInsideATimedBracket(unittest.TestCase):
+    """BENCHMARK_PROTOCOL.md: timing brackets computation only. Telemetry is
+    sampled outside the bracket under all circumstances.
+
+    Asserted by reading the two CPU benchmark sources and inspecting what lies
+    between each bracket's t0 and t1, rather than by trusting a comment. The
+    same scan also proves allocation and initialisation are outside the bracket.
+    """
+
+    SOURCES = ["cpu_cache_ladder.c", "cpu_simd_peak.c"]
+
+    # Anything that talks to the OS, allocates, or reads a sensor. A timed
+    # bracket may contain the computation and the monotonic counter, nothing more.
+    FORBIDDEN = [
+        "PdhCollectQueryData", "PdhGetFormattedCounterValue", "CallNtPowerInformation",
+        "Get-Counter", "Get-CimInstance", "nvidia-smi", "telemetry",
+        "GetSystemTime", "GetTickCount", "QueryPerformanceCounter",
+        "malloc(", "calloc(", "realloc(", "free(", "_aligned_malloc", "_aligned_free",
+        "fopen", "fprintf", "printf", "snprintf", "memset(", "getenv",
+        "SetThreadAffinityMask", "SetThreadPriority", "SetPriorityClass",
+        "bench_pin_current_thread", "bench_restore_current_thread",
+        "bench_write_results", "Sleep(",
+    ]
+
+    @staticmethod
+    def _brackets(text):
+        """Every region between a t0 assignment and the next t1 assignment."""
+        out = []
+        start = 0
+        while True:
+            i = text.find("double t0 = bench_cpu_time_seconds();", start)
+            if i < 0:
+                break
+            j = text.find("double t1 = bench_cpu_time_seconds();", i)
+            assert j > i, "a timed bracket opened and was never closed"
+            out.append(text[i + len("double t0 = bench_cpu_time_seconds();"):j])
+            start = j + 1
+        return out
+
+    def test_every_timed_bracket_is_free_of_telemetry_and_allocation(self):
+        for name in self.SOURCES:
+            path = REPO_ROOT / "bench" / "microbench" / name
+            text = path.read_text(encoding="utf-8")
+            brackets = self._brackets(text)
+            self.assertGreaterEqual(len(brackets), 1,
+                                    f"{name}: no timed bracket found")
+            for k, body in enumerate(brackets):
+                for token in self.FORBIDDEN:
+                    self.assertNotIn(
+                        token, body,
+                        f"{name} timed bracket {k} contains {token!r}; timing "
+                        f"brackets computation only")
+
+    def test_thread_placement_is_applied_outside_every_bracket(self):
+        """It must be present in the file -- Stage 0b added it -- and outside
+        every timed region, which the previous test covers."""
+        for name in self.SOURCES:
+            text = (REPO_ROOT / "bench" / "microbench" / name).read_text(encoding="utf-8")
+            self.assertIn("bench_pin_current_thread(", text,
+                          f"{name}: Stage 0b thread placement is missing")
+            self.assertIn("bench_restore_current_thread()", text,
+                          f"{name}: thread placement is never restored")
+
+    def test_the_sampler_declares_it_is_outside_the_bracket(self):
+        self.assertIn("sampled_inside_any_timed_bracket",
+                      (REPO_ROOT / "bench" / "machine_state.py").read_text(encoding="utf-8"))
+
+
+class TestCoreMappingAndSamplerAffinity(unittest.TestCase):
+    """Operator decision 2: the telemetry sampler must be pinned clear of the
+    measured thread's logical CPU AND of that CPU's SMT sibling, which shares the
+    physical core's execution ports and L1d. The mapping is QUERIED, not assumed:
+    the conventional interleaving is a convention, not a guarantee."""
+
+    SYNTHETIC = {
+        "available": True,
+        "n_physical_cores": 4,
+        "n_logical_cpus": 8,
+        "logical_to_physical": {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 2, 6: 3, 7: 3},
+        "smt_siblings": {0: [1], 1: [0], 2: [3], 3: [2],
+                         4: [5], 5: [4], 6: [7], 7: [6]},
+    }
+
+    def test_the_sibling_of_an_excluded_cpu_is_also_excluded(self):
+        r = ms.sampler_affinity_mask((0, 2), self.SYNTHETIC)
+        self.assertTrue(r["available"])
+        self.assertEqual(r["excluded_logical_cpus"], [0, 1, 2, 3])
+        self.assertEqual(r["allowed_logical_cpus"], [4, 5, 6, 7])
+        self.assertEqual(r["mask"], 0b11110000)
+        self.assertEqual(r["mask_hex"], "0xf0")
+
+    def test_the_mask_names_only_allowed_cpus(self):
+        r = ms.sampler_affinity_mask((0, 2), self.SYNTHETIC)
+        for cpu in r["excluded_logical_cpus"]:
+            self.assertEqual((r["mask"] >> cpu) & 1, 0, f"cpu {cpu} is in the mask")
+        for cpu in r["allowed_logical_cpus"]:
+            self.assertEqual((r["mask"] >> cpu) & 1, 1, f"cpu {cpu} is not in the mask")
+
+    def test_a_non_conventional_mapping_is_honoured_not_assumed(self):
+        """If this CPU paired 0 with 4 instead of 0 with 1, the mask must follow
+        the mapping rather than the convention."""
+        odd = {"available": True, "n_physical_cores": 4, "n_logical_cpus": 8,
+               "logical_to_physical": {0: 0, 4: 0, 1: 1, 5: 1,
+                                       2: 2, 6: 2, 3: 3, 7: 3},
+               "smt_siblings": {0: [4], 4: [0], 1: [5], 5: [1],
+                                2: [6], 6: [2], 3: [7], 7: [3]}}
+        r = ms.sampler_affinity_mask((0, 2), odd)
+        self.assertEqual(r["excluded_logical_cpus"], [0, 2, 4, 6])
+        self.assertEqual(r["allowed_logical_cpus"], [1, 3, 5, 7])
+
+    def test_excluding_everything_is_refused_rather_than_returning_zero(self):
+        r = ms.sampler_affinity_mask((0, 2, 4, 6), self.SYNTHETIC)
+        self.assertFalse(r["available"])
+        self.assertIn("nowhere to run", r["reason"])
+        self.assertNotIn("mask", r)
+
+    def test_an_unavailable_mapping_propagates_its_reason(self):
+        r = ms.sampler_affinity_mask((0, 2),
+                                     {"available": False, "reason": "no such API"})
+        self.assertFalse(r["available"])
+        self.assertEqual(r["reason"], "no such API")
+
+    def test_the_live_mapping_is_self_consistent(self):
+        m = ms.logical_core_mapping()
+        if not m.get("available"):
+            self.skipTest(f"mapping unavailable: {m.get('reason')}")
+        self.assertGreaterEqual(m["n_physical_cores"], 1)
+        self.assertEqual(m["n_logical_cpus"],
+                         sum(len(c["logical_cpus"]) for c in m["physical_cores"]))
+        for cpu, sibs in m["smt_siblings"].items():
+            for sib in sibs:
+                self.assertEqual(m["logical_to_physical"][sib],
+                                 m["logical_to_physical"][cpu],
+                                 "a sibling must sit on the same physical core")
+
+
+class TestPowerSource(unittest.TestCase):
+    """BENCHMARK_PROTOCOL.md 3: a run taken on battery is INVALID outright, so
+    this is a gate rather than a note."""
+
+    def test_the_power_source_is_reported_with_the_raw_status(self):
+        p = ms.power_source()
+        self.assertIn("on_ac", p)
+        self.assertIn("protocol", p)
+        self.assertIn("INVALID", p["protocol"])
+        if p.get("ac_line_status") is not None:
+            self.assertIn(p["ac_line_status_text"],
+                          ("on AC", "on battery", "unknown", "unrecognised"))
+
+    def test_an_unknown_status_is_not_assumed_to_be_ac(self):
+        """ACLineStatus 255 means unknown. The contract is that on_ac is None
+        there, never True -- asserted on the parsing rule, since the live machine
+        cannot be made to report 255 on demand."""
+        p = ms.power_source()
+        if p.get("ac_line_status") == 255:
+            self.assertIsNone(p["on_ac"])
+        else:
+            self.assertEqual(p["on_ac"], p.get("ac_line_status") == 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

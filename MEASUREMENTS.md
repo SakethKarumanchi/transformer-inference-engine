@@ -96,18 +96,18 @@ Reference run 2 unless stated. Std dev is as a percentage of median, the protoco
 |---|---|---|---|---|
 | 1 | GPU bandwidth (device-to-device, float4 grid-stride, 512 MiB working set = 512x L2) | **170.882 GB/s** | 2.54% | VALID (run 1 INVALID at 5.84%) |
 | 2 | GPU FP32 peak (32 register-held FMA chains, no global traffic) | **2786.49 GFLOP/s** | 2.20% | VALID (run 1: 2787.41, 1.89%, VALID) |
-| 3 | CPU cache ladder — L1-resident (8 KiB) | **127.38 GB/s** | 1.21% | VALID |
-| 3 | CPU cache ladder — L2-resident (256 KiB) | **99.64 GB/s** | 1.62% | VALID |
-| 3 | CPU cache ladder — L3-resident (4 MiB) | **62.31 GB/s** | 4.77% | VALID |
-| 3 | CPU cache ladder — DRAM-resident | *(no value)* | 5.32%–16.45% | **INVALID in both runs — field left empty** |
-| 4 | CPU SIMD peak — vectorised AVX2 | *(no value)* | 5.60% (run 1: 5.86%) | **INVALID in both runs — field left empty** |
-| 4 | CPU SIMD peak — scalar reference of the same loop | 8.347 GFLOP/s | 2.51% | VALID |
+| 3 | CPU cache ladder — L1-resident (8 KiB) | **127.38 GB/s** | 1.21% | VALID. **SUPERSEDED by Stage 0b 2026-09-18: 143.85 GB/s at 4 KiB, 1.272%, VALID.** The 8 KiB point was INVALID in Stage 0b run 2 (6.365%) |
+| 3 | CPU cache ladder — L2-resident (256 KiB) | **99.64 GB/s** | 1.62% | VALID. **SUPERSEDED by Stage 0b 2026-09-18: 113.85 GB/s at 256 KiB, 4.457%, VALID** |
+| 3 | CPU cache ladder — L3-resident (4 MiB) | **62.31 GB/s** | 4.77% | VALID. **SUPERSEDED by Stage 0b 2026-09-18: 70.81 GB/s at 4 MiB, 4.621%, VALID** |
+| 3 | CPU cache ladder — DRAM-resident | *(no value)* | 5.32%–16.45% | **INVALID in both runs — field left empty.** Stage 0b 2026-09-18 re-measured and it is **still INVALID in both runs** (5.35–21.46%); the field stays empty with a better reason |
+| 4 | CPU SIMD peak — vectorised AVX2 | *(no value)* | 5.60% (run 1: 5.86%) | **INVALID in both runs — field left empty.** **RESOLVED by Stage 0b 2026-09-18: 48.411 GFLOP/s, 2.773%, VALID (run 1: 49.506, 1.075%, VALID)** |
+| 4 | CPU SIMD peak — scalar reference of the same loop | 8.347 GFLOP/s | 2.51% | VALID. Stage 0b: 8.565 GFLOP/s, 1.847%, VALID |
 | 5 | Host-to-device, pinned | **12.589 GB/s** | 1.97% | VALID |
 | 5 | Device-to-host, pinned | **10.573 GB/s** | 4.56% | VALID |
 | 5 | Host-to-device, pageable | **5.528 GB/s** | 4.37% | VALID |
 | 5 | Device-to-host, pageable | **4.952 GB/s** | 4.42% | VALID (run 1 INVALID at 17.93%) |
 | 6 | cuBLAS SGEMM — best VALID **prefill** figure observed | **2344.35 GFLOP/s** (ffn_down, M=512, N=768, K=3072) | 0.40% | VALID in run 1; the same configuration was INVALID in run 2 at 8.78%. Best prefill figure VALID in the reference run: **1943.01 GFLOP/s** (attn_output_projection, M=512, N=768, K=768, 4.51%) |
-| 6 | cuBLAS SGEMM — **decode** (M=1), reported separately and never merged with prefill | ffn_up **72.64**, ffn_down **61.66**, lm_head **85.13** GFLOP/s | 3.40% / 1.86% / 1.66% | VALID. qkv_projection and attn_output_projection at M=1 were **INVALID in both runs** and have no value |
+| 6 | cuBLAS SGEMM — **decode** (M=1), reported separately and never merged with prefill | ffn_up **72.64**, ffn_down **61.66**, lm_head **85.13** GFLOP/s | 3.40% / 1.86% / 1.66% | VALID. qkv_projection and attn_output_projection at M=1 were **INVALID in both runs** and have no value <br><br>**CORRECTION, Stage 0b, 2026-09-18 — the three figures above are NOT valid in both runs and the word VALID in this row is wrong.** The error was found by re-reading the retained per-sample arrays in `bench/results/run1/` and `run2/`, and this entry's own "Every INVALID run" table below already contradicted it. File truth, both runs: qkv_projection M=1 **5.21% / 5.34%** (INVALID in both); attn_output_projection M=1 **7.41% / 9.53%** (INVALID in both); ffn_up M=1 **10.42% run 1 INVALID** / 3.40% run 2 valid; ffn_down M=1 **13.82% run 1 INVALID** / 1.86% run 2 valid; lm_head M=1 1.66% run 1 valid / **11.20% run 2 INVALID**. So: **all five M=1 shapes were INVALID in at least one run**; only qkv_projection and attn_output_projection failed in both; and the quoted lm_head figure of 85.13 GFLOP/s at 1.66% is a **run-1 number quoted in an entry that names run 2 as the reference run**, where that configuration was INVALID at 11.20%. **Which M=1 shape fails is not stable between runs**, so this is a stochastic hit rate under the 30-sample rule, not a property of any shape. The original text above is left intact as the record of what was written. The three figures must not be used as valid decode denominators. This error also propagated into the prompt briefing the Stage 0b session, which repeated the claim; the retained data corrected it. `cublas_sgemm_ref.cu` was NOT modified and NOT re-run by Stage 0b — it is the prefill denominator and `PERSISTENT.md` D3 records its M sweep as a placeholder Stage 3 replaces |
 | 7 | Kernel launch overhead — synchronize per launch | **13.104 µs** | 3.40% | VALID (run 1 INVALID at 7.37%) |
 | 7 | Kernel launch overhead — back-to-back, one sync per batch of 1000 | **8.275 µs** | 3.18% | VALID |
 | 8 | Shared memory bandwidth — conflict-free | **3069.52 GB/s** | 0.79% | VALID |
@@ -225,6 +225,8 @@ Two `HARDWARE.md` fields are deliberately empty. Neither carries a placeholder, 
 | §2 **Measured DRAM bandwidth** | Every DRAM-tier working set (8, 16, 32, 64, 128 MiB) exceeded the 5% standard-deviation limit in **both** suite runs. No valid figure exists. For orientation only, the invalid medians spanned 18.26–21.40 GB/s against a 23.464 GB/s single-channel theoretical ceiling |
 | §2 **Measured peak FP32 (SIMD)** | The vectorised AVX2 configuration exceeded the limit in **both** runs (5.86%, 5.60%). The scalar reference *was* valid at 8.347 GFLOP/s, and the 5.19x vectorised-over-scalar ratio confirms the compiler genuinely vectorised rather than silently dropping it — but a ratio is not a peak figure and none is substituted |
 
+**FOLLOW-UP, 2026-09-18 — Stage 0b.** A scoped diagnostic-and-remeasurement session was run against both of these fields; see the Stage 0b entry below. Outcome: **§2 Measured peak FP32 (SIMD) is now POPULATED at 48.411 GFLOP/s** (2.773%, VALID, valid in both Stage 0b runs). **§2 Measured DRAM bandwidth REMAINS EMPTY** — every DRAM-tier working set was INVALID again in both Stage 0b runs — but with a better-evidenced reason: the dispersion there is broad rather than spike-carried (zero robust outliers at 8, 16 and 32 MiB in reference run 2, against interquartile ranges of 19.88 / 20.75 / 10.70% of median), which is shared-L3 and single-channel-DRAM contention that no change inside the benchmark can control. Stage 0b additionally **replaced all five ladder values** in `HARDWARE.md` §2, because it changed `cpu_cache_ladder.c` and the background load and §4 voids a comparison across either.
+
 `HARDWARE.md` §6 (secondary devices) is also unpopulated, because no secondary device was used.
 
 #### cuBLAS reference shapes and their provenance
@@ -259,6 +261,187 @@ The session was unattended, so these were resolved rather than asked. Each is li
 #### What this taught
 
 A spec sheet describes a die; a machine is a die inside a thermal and power envelope, and the two disagree by 25% here. The rated 1485 MHz boost clock is not a number this card can hold for five seconds, let alone five minutes — it power-caps immediately and then decays to 1365 MHz while its power draw *falls*, which is how you tell thermal governance from power limiting. Locking the clock at the measured floor did not cost performance so much as buy comparability: it removed every throttle reason, collapsed clock variance to zero across 122 samples, and turned the warmup question from a real problem into a formality. The corollary is the one worth carrying: **on this machine an unlocked measurement is not a slow measurement, it is a measurement of a different machine at its start than at its end.**
+
+## Stage 0b — Diagnose and remeasure the INVALID CPU microbenchmarks
+*No prediction: Stage 0b is a continuation of Stage 0, which is exempt under the project's prediction rule because it measures the machine rather than changing it. No prediction was written, invented or substituted.*
+**Status:** complete, 2026-09-18
+
+Two required `HARDWARE.md` §2 fields were empty after Stage 0 because their measurements were INVALID in both suite runs. `PROJECT.md` §7 item 4 requires the Stage 10 performance model validated across all kernels, and a model with no CPU memory-bandwidth term and no CPU SIMD ceiling cannot be. `TECHNICAL_SPEC.md` §3 Stage 6 is framed as predicted-ceiling-is-vector-width versus measured, which requires a measured ceiling to exist.
+
+**Device:** NVIDIA GeForce GTX 1650 Ti (TU117) present but idle — this stage times no GPU kernel. The measured device is the CPU: Intel Core i5-10300H, Comet Lake-H, 4 physical / 8 logical cores — `HARDWARE.md` §2.
+
+#### Conditions
+
+- **This session ran ELEVATED** (`IsUserAnAdmin()` = True and `IsInRole(Administrator)` = True, both checked, neither assumed), so that it could apply the clock lock itself.
+- **Graphics clock locked at 1365 MHz** and **verified in effect before the first timed run, not assumed**: `verify-lock --mhz 1365` returned `locked: true` with 10 of 10 samples at exactly 1365 MHz and zero off-target. Re-verified still in effect immediately before the runs. The reason is thermal, not timing: this is a laptop whose CPU and GPU share one thermal solution, `HARDWARE.md` §5.3 records the locked card idling at 1365 MHz / 66 C / 13.89 W against the unlocked card's 300 MHz / 51 C / 3.86 W, and Stage 0's CPU figures were taken with the lock applied. **`nvidia-smi -lmc` was never attempted** — it is a device-capability limit on this card that returns exit 0 with "not supported", and elevation does not change that.
+- **Power: on AC** for every timed run, checked programmatically via `GetSystemPowerStatus` (`ACLineStatus` = 1, battery 98%) rather than assumed. `BENCHMARK_PROTOCOL.md` §3 makes a run on battery INVALID outright.
+- **Environment fingerprint verified.** Stage 0 never committed `bench/results/machine_fingerprint.json`, so `machine_state.py verify` had nothing to compare against and the every-stage verification required by `BENCHMARK_PROTOCOL.md` §4 and `PERSISTENT.md` §7 was unenforceable. Stage 0b compared the live capture field-by-field against `HARDWARE.md` §5.5 by hand, found every field identical, then **wrote the fingerprint file before the first timed run** so it records the state the measurements were taken under. `verify` then ran clean: `match: true`, `differences: []`, **26 fields compared**, exit 0.
+- **Compiler and flags UNCHANGED and confirmed byte-identical** to `HARDWARE.md` §5.5: host `/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG`, CUDA `-D_WINDOWS -Xcompiler=" /EHsc" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75`, MSVC 19.44.35229.0, nvcc 13.1.80, sm_75, driver 591.44. No comparison in this stage is void on flags.
+- **Warmup 25, 30 timed samples**, matching Stage 0 exactly.
+- **Both benchmarks were run twice. Run 2 is the reference**, as Stage 0 did. Raw per-sample timings for both retained: `bench/results/stage0b/run1/` and `run2/`. **No Stage 0 results file was written, overwritten or deleted** — Stage 0b output is routed through a guard that raises on any path outside `bench/results/stage0b/`, and that guard is unit-tested.
+- **Only `cpu_cache_ladder` and `cpu_simd_peak` were re-run.** The full suite was not. No benchmark that produced a valid Stage 0 figure was modified or re-run.
+- **Background load: see `HARDWARE.md` §5.4 for the full dated Stage 0b entry.** In brief: Nahimic and Intel DSA were closed and confirmed absent; **Riot Vanguard was not running at all this session**, where it was resident throughout Stage 0; Logitech Options+ was closed by the operator but **respawned before the runs** and is recorded as present rather than reported as closed; `msedgewebview2.exe` x6 could not be closed and **was equally resident during Stage 0**, so it is a shared condition rather than a difference; the MSI service stack was left running by deliberate operator decision because stopping it risks silently changing the clock regime (decision D8, `PERSISTENT.md` Q9) with no way to detect it; Windows Defender was not excluded or modified. **The Stage 0b condition is strictly lighter than Stage 0's.**
+- **Instrument added, recorded rather than assumed negligible.** A CPU frequency sampler ran in a separate process alongside every benchmark: 20 ms interval, measured per-probe cost 37.5–39.2 us, **duty cycle 0.355–0.372% of one core**. Pinned to logical CPUs 4, 5, 6, 7 (mask `0xf0`), clear of logical CPU 2 where the measured thread runs, clear of CPU 2's SMT sibling CPU 3, and clear of CPU 0 and its sibling CPU 1. The logical-to-physical mapping was **queried** with `GetLogicalProcessorInformationEx(RelationProcessorCore)`, not assumed from the conventional interleaving.
+- **Network — a recorded run condition.** Stage 0b ran over a **mobile hotspot** ("iPhone 2", Intel Wi-Fi 6 AX201 160MHz, link 216→551 Mbps), not the connection present during Stage 0. **Windows did NOT mark it metered** (`NetworkCostType = Unrestricted`) and **Windows Update was NOT paused** (`PauseUpdatesExpiryTime` null; `wuauserv` Stopped is not a pause). Driver 591.44 is a frozen fingerprint value and an update installed mid-session would void every comparison against Stage 0 with no undo. No update occurred; the fingerprint verified clean before the first timed run. **One disconnection and reconnection was observed, during the build-and-setup phase and before any timed run began.** No timed run overlapped it and **no run is invalidated by it**. Had one overlapped, that run would have been declared INVALID with the disconnection named, because a connection drop and the interference this stage diagnoses produce the same signature and the data cannot separate them.
+
+#### Phase 1 — what the retained Stage 0 data established, before any code changed
+
+`bench/analyze_variance.py` (new, unit-tested) read the raw per-sample arrays for **all 96 configurations in each of the two Stage 0 suite runs, 192 record-instances**, strictly read-only. **Raw per-sample arrays were present throughout** — had they not been, this phase was impossible as specified and the session would have stopped. Output: `bench/results/stage0b/variance_analysis.json`.
+
+**The strongest single discriminator was deviation DIRECTION.**
+
+| | `cpu_cache_ladder` | `cpu_simd_peak`, vectorised |
+|---|---|---|
+| Flagged outliers by direction | **54 slow, 1 fast** | — |
+| Below-median excursion | — | **16.2% (run 1), 16.7% (run 2)** |
+| Above-median excursion | — | 6.0% (run 1), 3.1% (run 2) |
+
+Interference can only ever make a sample slower. The ladder's deviations are upward from a clean floor; the SIMD vector path's are **downward from a ceiling**. That is not one fault with one cause — the two benchmarks were failing for different reasons, and interference was ruled out for the SIMD path on direction alone.
+
+**(a) Spike-carried versus broadly dispersed — both shapes present, in different places.**
+
+| Group | Spike share of variance | IQR as % of median | Reading |
+|---|---|---|---|
+| Cache-resident ladder points that failed | 0.86–0.99 | 1.5–3.7% | tight baseline plus isolated slow spikes |
+| DRAM tier 8–64 MiB, both runs | 0.00–0.59 | 8.4–16.6% | genuinely broad; run 1 at 8 MiB flagged **zero** outliers yet still measured 10.34% |
+| 128 MiB run 2 | 0.964 | 2.28% | the exception — six isolated spikes on a flat floor |
+| Decode-shape GEMMs | 0.78–0.99 | 1.1–4.5% | uniformly spike-carried |
+
+**(b) Sample duration does NOT predict variance across the corpus.** Spearman rho between median duration and std-dev-percent over all 192 record-instances = **0.194**; Pearson on log10(median) = 0.150. Median duration of INVALID configurations **2.073 ms**, of VALID configurations **0.789 ms** — the INVALID ones are *longer*. Decade buckets are non-monotone (5.06 / 1.20 / 4.64 / 3.69% median std dev from 1e-2 to 1e1 ms). **The "sample too short, one preemption dominates" hypothesis is refuted at corpus scale**, though it holds inside the sub-100 us decode subset — see (e).
+
+**(c) Trimming barely moved the SIMD figure** — 5.862% at k=0 to 5.797 / 5.752 / **5.729%** at k = 1 / 2 / 3. Not a tail effect. **Every trimmed statistic in this stage is a diagnostic only.** In `variance_analysis.json` they sit under keys prefixed `diagnostic_only__`, carry their own `diagnostic_only: true` marker and disclaimer, and are absent from the `measurement` block. No trimmed value appears as a result anywhere in this entry, in `HARDWARE.md`, or in any report. No trimmed value converted an INVALID run to valid, and the unit tests assert that it cannot.
+
+**(d) The 16384 B anomaly — two different mechanisms in the two runs, neither of them DRAM.** 16384 B is inside this CPU's 32768 B L1d by a factor of two, so no DRAM-side contention can reach it, yet it was INVALID in both Stage 0 runs.
+- Run 1: a smooth **10-sample hump** — flat at 2.185–2.30 ms for samples 0 through 10, rising to 3.102 ms at sample 20, decaying back to 2.26–2.30. Roughly 25 ms of sustained slowdown, +42% at peak. The robust outlier test flags **zero** samples because a quarter of them lie inside the hump. IQR 18.02%.
+- Run 2: the **first four timed samples** (2.538, 2.332, 2.449, 2.368 ms) are slow, then it settles at 2.05–2.15 ms for the remaining 26 — despite 25 warmup iterations on an already-faulted buffer.
+- The neighbouring 8192 B point was 1.21% VALID in run 2 and 8.67% INVALID in run 1, with its own contiguous hump at samples 18–21.
+
+What this established: at a 16 KiB working set the excursions are multi-sample, episodic and upward, consistent with the measured thread being descheduled or migrated off its core — L1d and L2 are per-core, so a migration costs a full re-warm. What it did **not** establish: which of those. The retained data carries no per-sample core identity and no per-sample frequency.
+
+**(e) Decode shapes — and a correction to `MEASUREMENTS.md` and to this session's own briefing.** See the correction appended to the Stage 0 entry's "nine measured values" table. File truth: **all five M=1 shapes were INVALID in at least one run**; only `qkv_projection` (5.21% / 5.34%) and `attn_output_projection` (7.41% / 9.53%) failed in both; `ffn_up` failed run 1 at 10.42%, `ffn_down` failed run 1 at 13.82%, `lm_head` failed run 2 at 11.20%. **Which shape fails is not stable between runs.**
+
+Mechanism, and here duration *is* the variable. Medians are 30–90 us, spike share 0.78–0.99 on an IQR of 1.1–4.5%. One sample at +50% among 30 gives a standard deviation of 0.5 / sqrt(29) = **9.3% of median** — which is the observed magnitude. **A single sub-100 us configuration cannot survive one scheduler or driver event under a 30-sample rule.** `cublas_sgemm_ref.cu` was **not modified and not re-run**: it is the prefill denominator and `PERSISTENT.md` D3 records its M sweep as a placeholder Stage 3 replaces. The decode headline in `BENCHMARK_PROTOCOL.md` §7 is unaffected — its denominator, 170.882 GB/s, is valid and these figures are not in that arithmetic. Flagged for Stages 4, 7, 8 and the Stage 10 small-kernel term in `PERSISTENT.md`; not decided here.
+
+#### Phase 2 — CPU telemetry, proven to move before being used
+
+`HARDWARE.md` §5.3 records Stage 0's CPU telemetry as static and unusable. Stage 0b probed every candidate source and classified each from its own readings.
+
+| Source | Verdict | Per-probe cost | Idle | Under applied load | Recovery |
+|---|---|---|---|---|---|
+| PDH `\Processor Information(_Total)\% Processor Performance` | **LIVE** | **12.5 us** | 167.8–176.2% | 140.0–150.4% | 170.0–174.0% |
+| PDH `...\% Performance Limit` | static, constant 100 | 6.1 us | — | — | — |
+| PDH `...\Processor Frequency` | static, constant 2496 | 6.3 us | — | — | — |
+| WMI `Win32_Processor.CurrentClockSpeed` | **static**, constant 2496 | **1 360 246 us** | — | — | — |
+| WMI `MSAcpi_ThermalZoneTemperature` | **static**, constant 69.05 C | **1 360 246 us** | — | — | — |
+
+- **A live CPU frequency source exists.** It moves about 30 percentage points under a deliberately applied 4-process load and returns toward idle when that load stops. Against 2496 MHz nominal: idle approximately 4.19–4.40 GHz, loaded approximately 3.49–3.75 GHz. At 12.5 us against ladder samples of 1.9–15 ms it costs 0.08–0.7%, safe **outside** the bracket.
+- **No live CPU package temperature source exists on this machine.** `MSAcpi_ThermalZoneTemperature` is constant under full 8-process load and costs roughly **1.36 seconds** per probe — 600 times a cache-ladder sample. It is static and unusable, twice over. This reproduces and explains Stage 0's static series rather than merely repeating it.
+- **Telemetry is never inside a timed bracket.** The sampler runs in a different process from the benchmark, so no probe can be. `tests/test_machine_state.py` additionally scans both C sources between every `t0` and `t1` and fails on any telemetry call, allocation, I/O or OS call there — which also proves allocation and initialisation are outside the ladder's bracket.
+
+#### Phase 3 — branch taken: the CODE branch, plus reduced background load
+
+The diagnosis identified causes in the benchmark code that the data supports, so the first branch applies: fix them, and remeasure every tier per operator decision 1. It also established a residue the benchmark cannot control, so the second branch's remedy — reduce background load — applies on top.
+
+**Evidence for the code cause:** 54 of 55 flagged ladder outliers are slow; the excursions are multi-sample and episodic; the failures concentrate where per-core state matters. The measured thread was free to migrate across 8 logical / 4 physical cores mid-sample, and L1d and L2 are per-core; and it ran at normal priority, where it outranked nothing.
+
+**Evidence for the uncontrollable residue:** at 8–64 MiB the dispersion is broad and spike-free. An 8 MiB working set is exactly the shared 8 MiB L3.
+
+**The change, in both files:** the measured thread is pinned to one logical CPU (2 by default, avoiding CPU 0's interrupt and DPC affinity) and raised to ABOVE_NORMAL priority class with THREAD_PRIORITY_HIGHEST. Applied once, **outside every timed bracket**, restored at the end, and **recorded in the results file whether or not it took** — never assumed. The timed brackets themselves are unchanged.
+
+**What was deliberately NOT changed:** the SIMD trip count, arithmetic and flop derivation. Lengthening a sample so it averages over excursions would have lowered the reported standard deviation by measuring something other than what Stage 0 measured. That is engineering the validity test, not the measurement.
+
+#### Measurement
+
+Reference run 2. Std dev as a percentage of median, the protocol's own validity criterion.
+
+**`cpu_simd_peak` — both runs VALID, where Stage 0 was INVALID in both.**
+
+| Configuration | Run | Value | Median | Min | Max | Std dev | Verdict |
+|---|---|---|---|---|---|---|---|
+| vectorised FMA loop, AVX2 | **2 (ref)** | **48.411 GFLOP/s** | 5.2880 ms | 5.1683 | 6.0396 | **2.773%** | **VALID** |
+| vectorised FMA loop, AVX2 | 1 | 49.506 GFLOP/s | 5.1710 ms | 5.1471 | 5.3906 | 1.075% | VALID |
+| scalar reference of the same loop | **2 (ref)** | **8.565 GFLOP/s** | 3.7361 ms | 3.7315 | 4.0622 | 1.847% | VALID |
+| scalar reference of the same loop | 1 | 8.472 GFLOP/s | 3.7769 ms | 3.7335 | 4.2290 | 3.163% | VALID |
+
+Vectorised-over-scalar **5.65x** (run 1: 5.84x), against Stage 0's 5.19x — the evidence that the compiler genuinely vectorised survives the change. The two paths are additionally now **proven** to compute the same arithmetic rather than assumed to: vector checksum 114111040 over 8 lanes = 14263880 per lane against scalar 14263877, a relative difference of 2.1e-7. Compiled ISA equals widest supported ISA (AVX2 / AVX2), still asserted.
+
+**`cpu_cache_ladder` — reference run 2, all sixteen points.**
+
+| Working set | GB/s | Median | Min | Max | Std dev | Verdict |
+|---|---|---|---|---|---|---|
+| 4096 B | **143.85** | 1.866 ms | 1.850 | 1.974 | **1.272%** | **VALID** — quoted L1-resident |
+| 8192 B | 143.91 | 1.865 ms | 1.848 | 2.305 | 6.365% | **INVALID** |
+| 16384 B | 143.82 | 1.866 ms | 1.850 | 1.938 | 1.284% | VALID |
+| 32768 B | 143.80 | 1.867 ms | 1.851 | 1.922 | 1.070% | VALID |
+| 65536 B | 116.85 | 2.297 ms | 2.150 | 2.449 | 3.665% | VALID |
+| 131072 B | 114.77 | 2.339 ms | 2.187 | 3.000 | 12.284% | **INVALID** |
+| 262144 B | **113.85** | 2.358 ms | 2.336 | 2.757 | **4.457%** | **VALID** — quoted L2-resident |
+| 524288 B | 70.82 | 3.791 ms | 3.742 | 4.852 | 8.317% | **INVALID** |
+| 1048576 B | 70.74 | 3.794 ms | 3.708 | 4.298 | 2.898% | VALID |
+| 2097152 B | 70.70 | 3.797 ms | 3.682 | 4.244 | 3.084% | VALID |
+| 4194304 B | **70.81** | 3.791 ms | 3.748 | 4.444 | **4.621%** | **VALID** — quoted L3-resident |
+| 8388608 B | 32.42 | 8.280 ms | 6.651 | 12.060 | 16.573% | **INVALID** |
+| 16777216 B | 22.05 | 12.171 ms | 10.924 | 15.900 | 11.768% | **INVALID** |
+| 33554432 B | 18.75 | 14.315 ms | 12.974 | 17.352 | 8.315% | **INVALID** |
+| 67108864 B | 18.54 | 14.477 ms | 13.860 | 18.448 | 8.060% | **INVALID** |
+| 134217728 B | 18.23 | 14.725 ms | 14.174 | 18.144 | 7.231% | **INVALID** |
+
+Measured plateau edges, reference run 2: **32 KiB, 256 KiB, 4 MiB, 8 MiB, 16 MiB** — the identical five Stage 0 found, from independently pinned code under different background load.
+
+**Every configuration still INVALID, listed as invalid — 19 across both runs. None averaged away, none silently retried, no run repeated to chase a better number.**
+
+Run 1 (11 INVALID): 4096 B 10.947%, 8192 B 11.411%, 16384 B 5.877%, 65536 B 16.891%, 262144 B 5.489%, 4194304 B 6.832%, 8388608 B 17.363%, 16777216 B 21.460%, 33554432 B 9.536%, 67108864 B 6.159%, 134217728 B 5.354%.
+Run 2 (8 INVALID): 8192 B 6.365%, 131072 B 12.284%, 524288 B 8.317%, 8388608 B 16.573%, 16777216 B 11.768%, 33554432 B 8.315%, 67108864 B 8.060%, 134217728 B 7.231%.
+
+Run 1 was markedly worse than run 2 across the whole ladder and ran first. Both runs used identical code and identical protocol counts. **This stage does not know why run 1 was worse**, and says so rather than picking a story; run 2 is the reference by the convention Stage 0 already set, not because it is the better number.
+
+#### Gap — diagnosis versus outcome
+
+The prompt asked for this framed as what Phase 1 established, what the remeasurement showed, and where the two disagree. **They disagree on the SIMD mechanism, and the remeasurement wins.**
+
+**Where the diagnosis was confirmed.**
+- The DRAM tier behaved exactly as Phase 1 predicted it would. Broad, spike-free dispersion is not addressable by thread placement, and it was not addressed: 8, 16 and 32 MiB in run 2 flagged **zero** robust outliers with interquartile ranges of **19.88 / 20.75 / 10.70%** of median — wider than Stage 0's. The field stays empty, now for a reason with a distribution shape behind it rather than a standard deviation.
+- The 16384 B anomaly resolved. It was INVALID in both Stage 0 runs (12.03%, 5.89%) and is **1.284% VALID** in Stage 0b run 2, on a flat L1 plateau of 143.80–143.85 GB/s across 4, 16 and 32 KiB agreeing to within 0.04%. Consistent with per-core cache re-warm after migration having been the cause, as Phase 1 suggested but could not establish.
+- The edge detector reproduced the identical five boundaries across a code change, which is a check on the ladder itself rather than on the machine.
+
+**Where the diagnosis was WRONG.** Phase 1 read the SIMD vector path's downward excursions as core frequency governance, and reasoned that thread placement would therefore **not** fix it — the Stage 0b entry was drafted expecting a second INVALID SIMD result to be a likely and acceptable outcome. That reading was not confirmed.
+
+- The deviation direction **flipped**. Below-median excursion fell from 16.2% / 16.7% to **0.5% / 2.3%**; above-median went from 6.0% / 3.1% to 4.2% / 14.2%. After pinning, the vector path behaves like every other benchmark on this machine: a clean floor with occasional upward spikes.
+- The new median sits at the **old minimum**, not the old median. Stage 0 median 5.977 / 5.911 ms with minima of 5.008 / 4.922 ms; Stage 0b median **5.171 / 5.288 ms**. The benchmark now attains consistently what it previously attained only intermittently.
+- **Counter evidence, and its limit.** The live frequency counter recorded a range of **10.9–14.3% of median** across the Stage 0b runs while the SIMD timings were stable to 1.075% and 2.773%. Frequency was still moving; the timings stopped moving with it. That is evidence against the frequency reading. **It is not conclusive, and the reason is stated rather than buried:** the counter sampled was `\Processor Information(_Total)\% Processor Performance`, an average across all 8 logical CPUs, **not** the frequency of logical CPU 2 specifically. A per-core counter path exists and was not used. This stage therefore does not claim to have measured the frequency of the core under test.
+
+**Best-supported explanation, stated as such.** The Stage 0 "fast" samples were the ones where the measured thread happened to have a physical core to itself; the slower baseline was SMT sibling contention, core migration, or preemption. Pinning to logical CPU 2 makes that the normal case rather than the lucky one.
+
+**Alternatives not ruled out, plainly.** Affinity and priority were applied **together**, and this stage cannot separate their contributions — a run pinned at normal priority was not performed. The `_Total` frequency counter cannot attribute frequency to the core under test, so a frequency contribution is reduced in plausibility but not excluded. The SMT sibling of CPU 2 was not held idle, so sibling contention was reduced by chance rather than by construction. And the background load changed at the same time as the code, so no figure in this entry separates the two: `BENCHMARK_PROTOCOL.md` §4 voids a comparison across either change, which is precisely why all five ladder values were replaced rather than only the DRAM one.
+
+**A reporting obligation, per operator decision 3.** Every figure in this entry is a figure for a benchmark that **outranks ordinary background work and owns a physical core** — ABOVE_NORMAL priority class, THREAD_PRIORITY_HIGHEST, pinned to logical CPU 2. That is what a ceiling measurement should be, and it is **not the same measurement Stage 0 attempted**, which ran unpinned at normal priority. Part of the L1 rise from 127.38 to 143.85 GB/s is that change and part is the lighter load; this stage does not claim to know the split.
+
+**The noise floor is unchanged at 4.4%** and was not re-derived, because this stage did not re-run the full suite and could not. The reasoning that keeps it safe: the Stage 0b condition is **strictly lighter** than Stage 0's — the close list removed load and Riot Vanguard was absent — and a floor measured under heavier load stays conservative under lighter load. A conservative floor only ever suppresses claims; it never licenses one. Flagged in `PERSISTENT.md` for a later stage to consider, not decided here.
+
+#### `HARDWARE.md` fields changed
+
+| Field | Before | After |
+|---|---|---|
+| §2 Measured peak FP32 (SIMD) | empty, INVALID in both Stage 0 runs | **48.411 GFLOP/s**, 2.773%, VALID (both Stage 0b runs valid) |
+| §2 Measured DRAM bandwidth | empty | **still empty** — INVALID in both Stage 0b runs, with a better-evidenced reason |
+| §2 L1-resident | 127.38 GB/s (8 KiB) | **143.85 GB/s** (4 KiB), 1.272% |
+| §2 L2-resident | 99.64 GB/s (256 KiB) | **113.85 GB/s** (256 KiB), 4.457% |
+| §2 L3-resident | 62.31 GB/s (4 MiB) | **70.81 GB/s** (4 MiB), 4.621% |
+| §2 Effective cache edges | 32 KiB, 256 KiB, 4 MiB, 8 MiB, 16 MiB | **unchanged** — the identical five, re-measured and confirmed |
+| §5.4 background load | Stage 0 entry | Stage 0 entry retained; **separate dated Stage 0b entry added** |
+
+Stage 0 provenance text was appended to, never deleted.
+
+#### Decisions and corrections
+
+1. **Corrected the M=1 validity error in the Stage 0 entry** (appended, not overwritten). The error had also propagated into the prompt briefing this session; the retained per-sample data corrected both.
+2. **Wrote `bench/results/machine_fingerprint.json`**, which Stage 0 never committed, before the first timed run, and confirmed `verify` runs clean against it.
+3. **Did not lengthen the SIMD trip count**, on the grounds stated above. In hindsight this was the right call for a second reason: the real cause was controllable by placement, and a longer sample would have masked it rather than found it.
+4. **Did not use the CPU hardware counters that do exist here.** `xperf` from the Windows Performance Toolkit exposes the live Comet Lake PMU. An ETW PMU trace is itself a substantial added load that would change the very condition this stage exists to clean up. Named, not used, and flagged as available to a later stage as a separate non-timed diagnostic run.
+
+#### What this taught
+
+A standard deviation tells you a run is invalid; only the distribution's **shape and direction** tell you why, and they are free — the raw samples were already on disk. Two configurations failing the same 5% test had opposite causes: the ladder deviated upward from a clean floor, which only contention can do, and the SIMD loop deviated *downward* from a ceiling, which contention cannot do at all. The direction alone separated a machine problem from a benchmark problem before a line of code changed. The sharper lesson is the one that cost a wrong hypothesis: a benchmark that measures a single thread must **say where that thread runs**. Left unpinned on a 4-core SMT laptop, `cpu_simd_peak` was not noisy — it was sampling two different machines, a core it shared and a core it owned, and reporting the mixture as variance. Pinning did not make the measurement quieter so much as make it a measurement of one thing.
 
 ## Stage 1 — Weights and tokenizer
 **Status:** not started

@@ -8,6 +8,26 @@
  *
  * Timed with the platform's highest-resolution monotonic counter via
  * bench_cpu_time_seconds(); never wall clock.
+ *
+ * STAGE 0b CHANGE -- thread placement. Every DRAM-tier working set was INVALID
+ * in both Stage 0 suite runs, and so was the 16384 B point, which is inside
+ * this CPU's 32768 B L1d and therefore out of reach of any DRAM-side
+ * contention. The retained per-sample timings show the excess variance is
+ * carried entirely by UPWARD excursions from a clean floor -- the minimum
+ * sample of every tier sits on a stable baseline and every deviation is
+ * slower, never faster. That rules out the timing construction and points at
+ * contention and preemption. Two of those the benchmark can control and did
+ * not: the measured thread was free to migrate across the 8 logical / 4
+ * physical cores, and L1d and L2 are per-core, so a migration mid-sample costs
+ * a full per-core cache re-warm; and it ran at normal priority, so any
+ * ordinary background thread could preempt it outright. Both are fixed below.
+ * The remainder -- the broad, spike-free dispersion at 8 MiB and above, where
+ * the working set contends with every other process in the shared 8 MiB L3 --
+ * is not addressable in this file and is handled by reducing background load
+ * instead.
+ *
+ * Nothing about the timed bracket changed: it still contains the read loop and
+ * nothing else. The placement call is made once, before any measurement.
  */
 #include "microbench.h"
 
@@ -147,6 +167,10 @@ int mb_cpu_cache_ladder_run(int warmup, int samples, mb_cache_ladder_result *out
     mb_cpu_os_cache_sizes(&out->os_l1d_bytes, &out->os_l2_bytes, &out->os_l3_bytes);
     out->bytes_per_sample = (size_t)MB_LADDER_TARGET_WORK;
 
+    /* OUTSIDE every timed bracket: applied once here, restored once at the end,
+     * and recorded whether or not it took. */
+    out->placement = bench_pin_current_thread(-1);
+
     unsigned *buf = (unsigned *)MB_ALIGNED_ALLOC(MB_LADDER_MAX_BYTES, 64);
     if (!buf) { fprintf(stderr, "cpu_cache_ladder: allocation failed\n"); return 1; }
     for (size_t i = 0; i < MB_LADDER_MAX_BYTES / sizeof(unsigned); ++i)
@@ -218,7 +242,14 @@ int mb_cpu_cache_ladder_run(int warmup, int samples, mb_cache_ladder_result *out
     }
 
     {
-        bench_kv_num nums[3 + MB_LADDER_MAX_EDGES];
+        bench_kv_str strs[] = {
+            { "thread_placement",       out->placement.detail },
+            { "timed_bracket_contains", "the streaming read loop only; allocation, "
+                                        "initialisation, thread placement and the "
+                                        "checksum reduction are all outside it" },
+            { "tag",                    "measured" },
+        };
+        bench_kv_num nums[3 + MB_LADDER_MAX_EDGES + 3];
         int nn = 0;
         nums[nn].key = "os_l1d_bytes"; nums[nn++].value = (double)out->os_l1d_bytes;
         nums[nn].key = "os_l2_bytes";  nums[nn++].value = (double)out->os_l2_bytes;
@@ -232,13 +263,21 @@ int mb_cpu_cache_ladder_run(int warmup, int samples, mb_cache_ladder_result *out
             nums[nn].key = edge_keys[e];
             nums[nn++].value = (double)out->edge_below[e];
         }
-        for (int i = 0; i < np; ++i) { recs[i].meta_num = nums; recs[i].n_meta_num = nn; }
+        nums[nn].key = "bytes_per_sample";   nums[nn++].value = (double)out->bytes_per_sample;
+        nums[nn].key = "thread_pinned";      nums[nn++].value = (double)out->placement.pinned;
+        nums[nn].key = "thread_logical_cpu"; nums[nn++].value = (double)out->placement.logical_cpu;
+        for (int i = 0; i < np; ++i) {
+            recs[i].meta_num = nums; recs[i].n_meta_num = nn;
+            recs[i].meta_str = strs;
+            recs[i].n_meta_str = (int)(sizeof strs / sizeof strs[0]);
+        }
         bench_write_results(NULL, "cpu_cache_ladder", recs, np);
     }
 
     for (int i = 0; i < np; ++i) free(raws[i]);
     free(raw);
     MB_ALIGNED_FREE(buf);
+    bench_restore_current_thread();
     return 0;
 }
 
@@ -254,6 +293,7 @@ int main(int argc, char **argv)
         return 1;
     }
     printf("cpu_cache_ladder  timer=%s\n", bench_cpu_timer_name());
+    printf("  thread placement: %s\n", r.placement.detail);
     printf("  OS-reported: L1d %zu B, L2 %zu B, L3 %zu B\n",
            r.os_l1d_bytes, r.os_l2_bytes, r.os_l3_bytes);
     int all_valid = 1;

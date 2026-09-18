@@ -47,8 +47,9 @@ BENCHMARK_NAMES = [b[1] for b in BENCHMARKS]
 DEFAULT_TIMEOUT_S = 1800
 
 
-def _default_runner(cmd, cwd=None, timeout=DEFAULT_TIMEOUT_S):
-    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+def _default_runner(cmd, cwd=None, timeout=DEFAULT_TIMEOUT_S, env=None):
+    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                       timeout=timeout, env=env)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -71,8 +72,13 @@ def exe_path(name: str) -> Path:
 
 
 def run_one(name: str, warmup: int | None = None, samples: int | None = None,
-            runner=_default_runner) -> dict:
+            runner=_default_runner, env: dict | None = None) -> dict:
     """Runs one microbenchmark. Its own results file is written by the binary.
+
+    `env` overrides the child environment; Stage 0b uses it to point
+    BENCH_RESULTS_DIR at bench/results/stage0b/runN and BENCH_STAGE_ID at
+    "stage-0b", so a Stage 0b figure is never written into a Stage 0 path and
+    never labelled with the stage whose figures it replaces.
 
     Exit codes: 0 all configurations valid; 2 ran but at least one
     configuration is INVALID under the 5% rule; anything else is a failure.
@@ -87,7 +93,10 @@ def run_one(name: str, warmup: int | None = None, samples: int | None = None,
         cmd = [c for c in cmd if c != ""]
     started = time.time()
     try:
-        rc, out, err = runner(cmd, cwd=str(REPO_ROOT))
+        if env is None:
+            rc, out, err = runner(cmd, cwd=str(REPO_ROOT))
+        else:
+            rc, out, err = runner(cmd, cwd=str(REPO_ROOT), env=env)
     except subprocess.TimeoutExpired:
         return {"status": "failed", "reason": f"timed out after {DEFAULT_TIMEOUT_S}s"}
     elapsed = round(time.time() - started, 3)
@@ -237,6 +246,152 @@ def compare_drift(current: dict, prior: dict, tolerance_pct: float = 5.0) -> dic
             "machine_unchanged": not moved and not appeared and not disappeared}
 
 
+# --------------------------------------------------------------- Stage 0b ---
+# Stage 0b re-runs ONLY the two CPU microbenchmarks whose figures were INVALID
+# in both Stage 0 suite runs. Everything that produced a valid Stage 0 figure is
+# left alone and no Stage 0 results file is written, overwritten or deleted:
+# bench/results/ and its run1/ and run2/ subdirectories are evidence and are
+# immutable. Stage 0b output goes to bench/results/stage0b/run1/ and run2/, and
+# _guard_stage0b_path() refuses any other destination rather than trusting the
+# caller to have got it right.
+
+STAGE0B_DIR = RESULTS_DIR / "stage0b"
+STAGE0B_BENCHMARKS = ["cpu_cache_ladder", "cpu_simd_peak"]
+STAGE0B_WARMUP = 25          # matches Stage 0 (BENCHMARK_PROTOCOL.md 4.2)
+STAGE0B_SAMPLES = 30         # matches Stage 0
+STAGE0B_CONSOLIDATED = STAGE0B_DIR / "stage0b_consolidated.json"
+
+
+class Stage0ResultsAreImmutable(RuntimeError):
+    """Raised rather than writing anywhere a Stage 0 results file could live."""
+
+
+def _guard_stage0b_path(path: Path) -> Path:
+    """Every Stage 0b write goes through here. Nothing else may."""
+    p = Path(path).resolve()
+    root = STAGE0B_DIR.resolve()
+    if p != root and root not in p.parents:
+        raise Stage0ResultsAreImmutable(
+            f"refusing to write {p}: Stage 0b writes only under {root}. "
+            f"Stage 0 results are evidence and are never overwritten.")
+    return p
+
+
+def stage0b_run_dir(run: int) -> Path:
+    if run not in (1, 2):
+        raise ValueError(f"Stage 0b has runs 1 and 2, not {run}")
+    return _guard_stage0b_path(STAGE0B_DIR / f"run{run}")
+
+
+def run_stage0b(runs=(1, 2), telemetry: bool = True,
+                warmup: int = STAGE0B_WARMUP, samples: int = STAGE0B_SAMPLES,
+                runner=_default_runner) -> dict:
+    """Runs cpu_cache_ladder and cpu_simd_peak twice, under protocol conditions.
+
+    Run 2 is the reference, as Stage 0 treated it.
+
+    Each benchmark process is optionally shadowed by a CPU frequency sampler
+    running in THIS process. The sampler cannot be inside the benchmark's timed
+    bracket -- it is not even in the same process -- and its own cost and duty
+    cycle are recorded so its contribution to background load is visible rather
+    than assumed negligible. It is a recorded run CONDITION, not a measurement.
+    """
+    sampler_factory = None
+    if telemetry:
+        try:
+            sys.path.insert(0, str(REPO_ROOT / "bench"))
+            import machine_state                                # noqa: PLC0415
+            sampler_factory = machine_state.CpuTelemetrySampler
+        except Exception as e:                                  # noqa: BLE001
+            print(f"CPU telemetry sampler unavailable, continuing without it: {e}",
+                  file=sys.stderr)
+
+    out = {"stage": "stage-0b",
+           "benchmarks": STAGE0B_BENCHMARKS,
+           "warmup": warmup, "samples": samples,
+           "reference_run": 2,
+           "telemetry_requested": telemetry,
+           "runs": {}}
+
+    for run in runs:
+        d = stage0b_run_dir(run)
+        d.mkdir(parents=True, exist_ok=True)
+        run_rec = {}
+        for name in STAGE0B_BENCHMARKS:
+            print(f"[stage-0b run{run}] {name} ...", flush=True)
+            env = dict(os.environ)
+            env["BENCH_RESULTS_DIR"] = str(d)
+            env["BENCH_STAGE_ID"] = "stage-0b"
+
+            sampler = None
+            if sampler_factory is not None:
+                try:
+                    sampler = sampler_factory().start()
+                    aff = sampler.affinity
+                    print(f"  telemetry sampler pinned to logical CPUs "
+                          f"{aff['allowed_logical_cpus']} (mask {aff['mask_hex']}), "
+                          f"clear of {aff['excluded_logical_cpus']}", flush=True)
+                except Exception as e:                          # noqa: BLE001
+                    # An unpinnable sampler sharing a physical core with the
+                    # measured thread is worse than no trace. Recorded, not
+                    # silently dropped.
+                    print(f"  CPU frequency sampler NOT started: {e}",
+                          file=sys.stderr)
+                    out.setdefault("telemetry_not_started", []).append(
+                        {"run": run, "benchmark": name, "reason": str(e)})
+                    sampler = None
+
+            rec = run_one(name, warmup, samples, runner=runner, env=env)
+
+            if sampler is not None:
+                trace = sampler.stop()
+                tpath = _guard_stage0b_path(d / f"{name}_cpu_frequency_trace.json")
+                tpath.write_text(json.dumps(trace, indent=2), encoding="utf-8")
+                rec["cpu_frequency_trace"] = str(tpath.relative_to(REPO_ROOT))
+                rec["cpu_frequency_summary"] = trace["summary"]
+                rec["sampler_duty_cycle_of_one_core"] = trace["sampler_duty_cycle_of_one_core"]
+                rec["sampler_affinity"] = {
+                    "mask_hex": trace["affinity"]["mask_hex"],
+                    "allowed_logical_cpus": trace["affinity"]["allowed_logical_cpus"],
+                    "excluded_logical_cpus": trace["affinity"]["excluded_logical_cpus"],
+                    "applied": trace["affinity_applied"],
+                }
+                rec["sampler_interval_s"] = trace["interval_s"]
+                rec["sampler_per_probe_us"] = trace["per_probe_us"]
+
+            doc = load_benchmark_results(name, results_dir=d)
+            if doc is None:
+                rec["status"] = "failed"
+                rec["reason"] = (f"{name} wrote no results file at "
+                                 f"{d / (name + '.json')}")
+                rec["values"] = None
+            else:
+                rec["values"] = headline_values(doc)
+                rec["git_commit"] = doc.get("git_commit")
+                rec["cxx_flags"] = doc.get("cxx_flags")
+                rec["stage_recorded"] = doc.get("stage")
+            print(rec.get("stdout", ""), end="")
+            print(f"      -> {rec['status']}"
+                  + (f": {rec['reason']}" if rec.get("reason") else ""), flush=True)
+            run_rec[name] = rec
+        out["runs"][f"run{run}"] = run_rec
+
+    # Every configuration that is still INVALID, listed as invalid. Never
+    # averaged away, never silently retried.
+    invalid = []
+    for run_key, benches in out["runs"].items():
+        for name, rec in benches.items():
+            for cfg, v in (rec.get("values") or {}).items():
+                if v.get("valid") is False:
+                    invalid.append({"run": run_key, "benchmark": name,
+                                    "configuration": cfg,
+                                    "stddev_pct_of_median": v.get("stddev_pct_of_median")})
+    out["invalid_configurations"] = invalid
+    out["n_invalid"] = len(invalid)
+    out["generated_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -250,9 +405,39 @@ def main(argv=None) -> int:
     ap.add_argument("--compare", default=None,
                     help="prior consolidated file to compare this run against")
     ap.add_argument("--tolerance-pct", type=float, default=5.0)
+    ap.add_argument("--stage0b", action="store_true",
+                    help="Stage 0b mode: run ONLY cpu_cache_ladder and cpu_simd_peak, "
+                         "twice, writing to bench/results/stage0b/run1 and run2. "
+                         "No Stage 0 results path is written, overwritten or deleted.")
+    ap.add_argument("--no-telemetry", action="store_true",
+                    help="Stage 0b mode: do not shadow the runs with the CPU "
+                         "frequency sampler")
     args = ap.parse_args(argv)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.stage0b:
+        if not args.no_build:
+            b = build()
+            if not b["ok"]:
+                print("BUILD FAILED; not running anything.", file=sys.stderr)
+                print(b["stderr_tail"] or b["stdout_tail"], file=sys.stderr)
+                return 1
+        data = run_stage0b(telemetry=not args.no_telemetry,
+                           warmup=args.warmup or STAGE0B_WARMUP,
+                           samples=args.samples or STAGE0B_SAMPLES)
+        out_path = _guard_stage0b_path(STAGE0B_CONSOLIDATED)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        print(f"\nconsolidated Stage 0b results: {out_path}")
+        if data["invalid_configurations"]:
+            print(f"  INVALID configurations ({data['n_invalid']}):")
+            for c in data["invalid_configurations"]:
+                print(f"    {c['run']} {c['benchmark']} / {c['configuration']}: "
+                      f"{c['stddev_pct_of_median']:.3f}% of median")
+        else:
+            print("  INVALID configurations: none")
+        return 2 if data["invalid_configurations"] else 0
 
     if not args.no_build:
         b = build()

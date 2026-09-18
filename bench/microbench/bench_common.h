@@ -59,6 +59,36 @@ void bench_mark_invalid(bench_stats *s, const char *reason);
 double bench_cpu_time_seconds(void);
 const char *bench_cpu_timer_name(void);
 
+/* ---- CPU thread placement --------------------------------------------- */
+/* Stage 0b finding: cpu_cache_ladder and cpu_simd_peak ran unpinned at normal
+ * priority. This machine has 4 physical / 8 logical cores and L1d and L2 are
+ * per-core, so a migration mid-sample costs a full per-core cache re-warm, and
+ * a normal-priority background thread can preempt the measured one outright.
+ * Both are conditions the benchmark can control and did not.
+ *
+ * Applied OUTSIDE every timed bracket, once per run, and recorded in the
+ * results file. A field that could not be applied is reported as not applied
+ * WITH the reason -- never silently assumed to have taken.
+ *
+ * The logical processor defaults to BENCH_DEFAULT_PIN_CPU and is overridden by
+ * the BENCH_PIN_CPU environment variable. Logical processor 0 is deliberately
+ * not the default: it carries the bulk of this system's interrupt and DPC
+ * work. */
+#define BENCH_DEFAULT_PIN_CPU 2
+
+typedef struct {
+    int  pinned;             /* 1 when the affinity mask was actually applied */
+    int  logical_cpu;        /* the logical processor asked for; -1 if none */
+    int  priority_raised;    /* 1 when the thread priority was actually raised */
+    char detail[BENCH_LABEL_LEN];
+} bench_thread_placement;
+
+/* Pins the calling thread to one logical processor and raises its priority.
+ * logical_cpu < 0 selects BENCH_PIN_CPU from the environment, else the
+ * default. Never called from inside a timed bracket. */
+bench_thread_placement bench_pin_current_thread(int logical_cpu);
+void bench_restore_current_thread(void);
+
 /* ---- warmup-and-sample driver ----------------------------------------- */
 /* body(ctx, iteration) performs one iteration and returns its elapsed time in
  * milliseconds. The driver calls it (warmup + samples) times and writes only
@@ -142,6 +172,12 @@ const char *bench_cuda_flags(void);
 /* Device identity string ("NVIDIA GeForce ... sm_75"); "cpu-only-build" when
  * the harness was linked without a usable CUDA device. */
 const char *bench_device_name(void);
+
+/* Stage identifier written into every results file. BENCH_STAGE_ID is the
+ * compiled default; the BENCH_STAGE_ID environment variable overrides it so a
+ * follow-up session (Stage 0b) does not label its files as the stage that
+ * produced the figures it is replacing. The value is recorded, never inferred. */
+const char *bench_stage_id(void);
 
 /* Resolves the repository's bench/results directory from the executable's
  * location. Returns buf. */
