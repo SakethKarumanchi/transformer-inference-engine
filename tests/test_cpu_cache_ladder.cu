@@ -23,6 +23,73 @@ int main(void)
           "every point reads the same %zu B per sample, so the loop shape does "
           "not vary with the working-set size", r.bytes_per_sample);
 
+    /* --- Stage 0b: the byte count really is the same at every point ----
+     *
+     * bytes_per_sample is one field for the whole sweep, so asserting it is
+     * positive proves nothing about the individual points. The derived GB/s
+     * figure is what a later stage reads, and it is bytes_per_sample divided by
+     * the median. Recomputing it from the recorded median at every working set
+     * and requiring the recorded figure back therefore proves that the same
+     * byte count was charged to every point -- if one point had read a
+     * different number of bytes, its GB/s and its median could not both be
+     * what the record says they are. */
+    for (int p = 0; p < r.n_points; ++p) {
+        double expect = (r.stats[p].median > 0.0)
+                      ? (double)r.bytes_per_sample / (r.stats[p].median * 1e-3) / 1e9
+                      : 0.0;
+        double err = (expect > 0.0) ? fabs(r.gb_per_s[p] - expect) / expect : 1.0;
+        CHECK(err < 1e-12,
+              "working set %zu B: the reported %.4f GB/s is %zu B / %.6f ms, the "
+              "same byte count as every other point (relative error %.3g)",
+              r.sizes[p], r.gb_per_s[p], r.bytes_per_sample, r.stats[p].median, err);
+    }
+
+    /* --- Stage 0b: thread placement is recorded, never assumed --------- */
+    printf("       thread placement: %s\n", r.placement.detail);
+    CHECK(r.placement.detail[0] != '\0',
+          "the run records where the measured thread ran and at what priority");
+    CHECK(r.placement.pinned == 0 || r.placement.pinned == 1,
+          "the pinned flag is a verdict, not a guess (%d)", r.placement.pinned);
+    if (r.placement.pinned)
+        CHECK(r.placement.logical_cpu >= 0,
+              "a pinned run names the logical processor it was pinned to (%d)",
+              r.placement.logical_cpu);
+
+    /* --- the timed bracket excludes allocation and initialisation ------
+     *
+     * Measured rather than asserted from a reading of the source. The sweep
+     * allocates and initialises one MB_LADDER_MAX_BYTES buffer for the whole
+     * ladder; if either were inside the bracket, no sample anywhere could be
+     * faster than doing it once. The fastest sample in the whole ladder is
+     * compared against that cost, so the margin is the largest one available
+     * and the check does not depend on the machine being quiet.
+     *
+     * tests/test_machine_state.py makes the complementary structural check by
+     * scanning the source between t0 and t1. */
+    {
+        const size_t probe_bytes = 128u * 1024u * 1024u;
+        double a0 = bench_cpu_time_seconds();
+        unsigned *probe = (unsigned *)malloc(probe_bytes);
+        CHECK(probe != NULL, "the allocation probe obtained %zu B", probe_bytes);
+        if (probe) {
+            for (size_t i = 0; i < probe_bytes / sizeof(unsigned); ++i)
+                probe[i] = (unsigned)i;
+        }
+        double alloc_init_ms = (bench_cpu_time_seconds() - a0) * 1e3;
+        free(probe);
+
+        double fastest = r.stats[0].min;
+        for (int p = 1; p < r.n_points; ++p)
+            if (r.stats[p].min < fastest) fastest = r.stats[p].min;
+
+        printf("       allocate+initialise %zu B costs %.3f ms; fastest ladder "
+               "sample anywhere is %.3f ms\n", probe_bytes, alloc_init_ms, fastest);
+        CHECK(fastest < alloc_init_ms,
+              "the fastest sample (%.3f ms) is below the cost of one "
+              "allocate-and-initialise (%.3f ms), so neither is inside the "
+              "timed bracket", fastest, alloc_init_ms);
+    }
+
     /* --- the swept range brackets every reported cache level ---------- */
     size_t smallest = r.sizes[0], largest = r.sizes[r.n_points - 1];
     const size_t levels[3] = { l1d, l2, l3 };

@@ -222,7 +222,7 @@ else()
 endif()
 message(STATUS "  python        : ${Python3_EXECUTABLE}")
 if(Python3_Interpreter_FOUND)
-    foreach(pytest test_run_all test_machine_state test_profile)
+    foreach(pytest test_run_all test_machine_state test_profile test_analyze_variance)
         add_test(NAME ${pytest}
                  COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/${pytest}.py")
         set_tests_properties(${pytest} PROPERTIES TIMEOUT 300)

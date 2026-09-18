@@ -133,6 +133,85 @@ extern "C" double bench_cpu_time_seconds(void)
 #endif
 }
 
+/* ===================== CPU thread placement =========================== */
+/* Applied once per run, OUTSIDE every timed bracket. Nothing here is ever
+ * called from inside a timed region; tests/test_machine_state.py asserts that
+ * by scanning the two CPU benchmark sources between their t0 and t1. */
+
+#if defined(_WIN32)
+static DWORD_PTR g_prev_affinity = 0;
+static int       g_prev_priority = THREAD_PRIORITY_NORMAL;
+static int       g_placed        = 0;
+#endif
+
+extern "C" bench_thread_placement bench_pin_current_thread(int logical_cpu)
+{
+    bench_thread_placement p;
+    memset(&p, 0, sizeof p);
+    p.logical_cpu = -1;
+
+    if (logical_cpu < 0) {
+        const char *env = getenv("BENCH_PIN_CPU");
+        logical_cpu = (env && *env) ? atoi(env) : BENCH_DEFAULT_PIN_CPU;
+    }
+
+#if defined(_WIN32)
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    if (logical_cpu < 0 || (DWORD)logical_cpu >= si.dwNumberOfProcessors) {
+        snprintf(p.detail, sizeof p.detail,
+                 "not pinned: logical cpu %d outside the %lu processors this "
+                 "system reports", logical_cpu, (unsigned long)si.dwNumberOfProcessors);
+        return p;
+    }
+
+    HANDLE th = GetCurrentThread();
+    DWORD_PTR mask = ((DWORD_PTR)1) << logical_cpu;
+    DWORD_PTR prev = SetThreadAffinityMask(th, mask);
+    if (prev == 0) {
+        snprintf(p.detail, sizeof p.detail,
+                 "not pinned: SetThreadAffinityMask failed, GetLastError=%lu",
+                 (unsigned long)GetLastError());
+    } else {
+        g_prev_affinity = prev;
+        g_placed = 1;
+        p.pinned = 1;
+        p.logical_cpu = logical_cpu;
+    }
+
+    g_prev_priority = GetThreadPriority(th);
+    /* ABOVE_NORMAL rather than REALTIME: the measured thread must outrank
+     * ordinary background work without being able to starve the system it is
+     * measuring. */
+    SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+    if (SetThreadPriority(th, THREAD_PRIORITY_HIGHEST)) {
+        p.priority_raised = 1;
+    }
+
+    snprintf(p.detail, sizeof p.detail,
+             "%s logical cpu %d of %lu; priority %s (ABOVE_NORMAL class, "
+             "THREAD_PRIORITY_HIGHEST)",
+             p.pinned ? "pinned to" : "NOT pinned to", logical_cpu,
+             (unsigned long)si.dwNumberOfProcessors,
+             p.priority_raised ? "raised" : "NOT raised");
+#else
+    snprintf(p.detail, sizeof p.detail,
+             "not pinned: no thread-affinity implementation on this platform");
+#endif
+    return p;
+}
+
+extern "C" void bench_restore_current_thread(void)
+{
+#if defined(_WIN32)
+    HANDLE th = GetCurrentThread();
+    if (g_placed && g_prev_affinity) SetThreadAffinityMask(th, g_prev_affinity);
+    SetThreadPriority(th, g_prev_priority);
+    SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
+    g_placed = 0;
+#endif
+}
+
 /* ===================== warmup-and-sample driver ======================= */
 
 extern "C" bench_stats bench_run(bench_body_fn body, void *ctx,
@@ -200,6 +279,12 @@ extern "C" const char *bench_cxx_compiler(void)    { return BENCH_CXX_COMPILER; 
 extern "C" const char *bench_cxx_flags(void)       { return BENCH_CXX_FLAGS; }
 extern "C" const char *bench_cuda_compiler(void)   { return BENCH_CUDA_COMPILER; }
 extern "C" const char *bench_cuda_flags(void)      { return BENCH_CUDA_FLAGS; }
+
+extern "C" const char *bench_stage_id(void)
+{
+    const char *env = getenv("BENCH_STAGE_ID");
+    return (env && *env) ? env : BENCH_STAGE_ID;
+}
 
 extern "C" const char *bench_device_name(void)
 {
@@ -325,7 +410,7 @@ extern "C" int bench_write_results_fp(void *fpv,
     strftime(ts, sizeof ts, "%Y-%m-%dT%H:%M:%SZ", &gmt);
 
     fputs("{", f);
-    fputs("\"stage\":", f);            json_str(f, BENCH_STAGE_ID);           fputc(',', f);
+    fputs("\"stage\":", f);            json_str(f, bench_stage_id());         fputc(',', f);
     fputs("\"git_commit\":", f);       json_str(f, bench_git_commit());       fputc(',', f);
     fputs("\"run_timestamp_utc\":", f);json_str(f, ts);                       fputc(',', f);
     fputs("\"build_timestamp\":", f);  json_str(f, bench_build_timestamp());  fputc(',', f);

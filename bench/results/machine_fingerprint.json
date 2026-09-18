@@ -1,0 +1,42 @@
+{
+  "os": "Windows 11 10.0.26200",
+  "machine": "AMD64",
+  "cpu": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+  "python": "3.14.2",
+  "gpu": {
+    "name": "NVIDIA GeForce GTX 1650 Ti",
+    "driver_version": "591.44",
+    "vbios_version": "90.16.51.00.14",
+    "compute_cap": "7.5",
+    "memory.total": "4096 MiB",
+    "power.max_limit": "55.00 W"
+  },
+  "nvcc": "nvcc: NVIDIA (R) Cuda compiler driver",
+  "nvidia_smi": "NVIDIA-SMI version  : 591.44",
+  "ncu": "NVIDIA (R) Nsight Compute Command Line Profiler",
+  "windows_power_plan": "Power Scheme GUID: 69f3d390-66d3-4992-be72-f285309743af  (Ultimate Performance)",
+  "hardware_accelerated_gpu_scheduling": "2",
+  "build_flags": {
+    "BENCH_BUILD_TIMESTAMP": "2026-09-18T06:56:02Z",
+    "BENCH_CXX_COMPILER": "MSVC 19.44.35229.0 (C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/HostX64/x64/cl.exe)",
+    "BENCH_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+    "BENCH_CUDA_COMPILER": "nvcc 13.1.80 (C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1/bin/nvcc.exe)",
+    "BENCH_CUDA_FLAGS": "-D_WINDOWS -Xcompiler=\\\" /EHsc\\\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75",
+    "BENCH_CUDA_ARCH": "sm_75",
+    "BENCH_RESULTS_DIR": "C:/Users/saket/Transformer_Inference_Engine/bench/results"
+  },
+  "torch": {
+    "version": "2.14.0+cu130",
+    "cuda": "13.0",
+    "cuda_available": true,
+    "arch_list": [
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90",
+      "sm_100",
+      "sm_120"
+    ]
+  },
+  "captured_utc": "2026-09-18T07:28:06Z"
+}

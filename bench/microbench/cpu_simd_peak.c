@@ -9,6 +9,37 @@
  * silently dropped the vectorisation, the two figures would match; the unit
  * test asserts the vector run is the faster of the two, which is the only
  * evidence that vectorisation actually happened.
+ *
+ * STAGE 0b CHANGE -- thread placement, and a checksum carried out of each path.
+ *
+ * The vectorised configuration exceeded the 5% standard-deviation limit in both
+ * Stage 0 suite runs (5.86%, 5.60%) while the scalar reference of the same loop
+ * did not (0.21%, 2.51%). Whatever explains that has to explain a difference
+ * between two paths through one benchmark, not a property of the machine in
+ * general. The retained per-sample timings do: the vector path's dispersion is
+ * carried by DOWNWARD excursions -- contiguous blocks of samples that run
+ * FASTER than the median (run 1 median 5.977 ms, min 5.008 ms; run 2 median
+ * 5.911 ms, min 4.922 ms), recovering smoothly over several samples. External
+ * interference can only ever make a sample slower, so interference cannot be
+ * the cause here. Removing the k largest samples barely moves the figure
+ * (5.862% -> 5.729% at k = 3), confirming it is not a tail effect either. The
+ * shape is that of the core changing frequency during the run, which a
+ * benchmark cannot control; the scalar path, which draws a fraction of the
+ * power, never leaves its settled frequency.
+ *
+ * What IS controllable, and was not controlled, is where the thread ran and at
+ * what priority. Both are fixed below, applied once and outside every timed
+ * bracket. This addresses migration and preemption; it does NOT address
+ * frequency variation, and this stage does not claim it will. The trip count,
+ * the arithmetic and the flop derivation are deliberately unchanged: lengthening
+ * a sample so it averages over frequency excursions would lower the reported
+ * standard deviation by measuring something other than what Stage 0 measured,
+ * which is engineering the validity test rather than the measurement.
+ *
+ * The checksums exist so tests/test_cpu_simd_peak.cu can prove the two paths
+ * compute the same arithmetic rather than assume it. Every vector lane starts
+ * from the same value as the matching scalar chain, so the vector checksum is
+ * MB_SIMD_LANES times the scalar one in exact arithmetic.
  */
 #include "microbench.h"
 
@@ -82,7 +113,15 @@ typedef __m128 mb_vec;
 #  define MB_VADD(a, b)     _mm_add_ps((a), (b))
 #endif
 
-typedef struct { int iters; volatile float sink; } simd_ctx;
+typedef struct {
+    int   iters;
+    volatile float sink;
+    /* Per-iteration total of each path, carried out for the unit test. Every
+     * iteration starts from the same accumulators and runs the same trip count,
+     * so the value is identical across iterations and deterministic. */
+    double vector_total;
+    double scalar_total;
+} simd_ctx;
 
 static double simd_vector_body(void *vctx, int iteration)
 {
@@ -108,6 +147,7 @@ static double simd_vector_body(void *vctx, int iteration)
 #endif
     float total = 0.0f;
     for (int i = 0; i < MB_SIMD_LANES; ++i) total += tmp[i];
+    c->vector_total = (double)total;
     c->sink += total;
     return (t1 - t0) * 1.0e3;
 }
@@ -131,6 +171,7 @@ static double simd_scalar_body(void *vctx, int iteration)
 
     float total = 0.0f;
     for (int i = 0; i < MB_SIMD_ACC; ++i) total += acc[i];
+    c->scalar_total = (double)total;
     c->sink += total;
     return (t1 - t0) * 1.0e3;
 }
@@ -153,12 +194,21 @@ int mb_cpu_simd_peak_run(int warmup, int samples, mb_simd_peak_result *out)
     simd_ctx c;
     c.iters = MB_SIMD_ITERS;
     c.sink  = 0.0f;
+    c.vector_total = 0.0;
+    c.scalar_total = 0.0;
+
+    /* OUTSIDE every timed bracket: applied once here, restored once at the end,
+     * and recorded whether or not it took. */
+    out->placement = bench_pin_current_thread(-1);
 
     int eff_w = 0, eff_s = 0;
     out->vector_stats = bench_run(simd_vector_body, &c, warmup, samples, raw_v, &eff_w, &eff_s);
     out->scalar_stats = bench_run(simd_scalar_body, &c, warmup, samples, raw_s, &eff_w, &eff_s);
     out->warmup  = eff_w;
     out->samples = eff_s;
+    out->lanes           = MB_SIMD_LANES;
+    out->vector_checksum = c.vector_total;
+    out->scalar_checksum = c.scalar_total;
 
     /* FLOPs derived from the trip count: iterations * chains * lanes * 2. */
     double vec_flops = (double)c.iters * MB_SIMD_ACC * MB_SIMD_LANES * 2.0;
@@ -178,6 +228,10 @@ int mb_cpu_simd_peak_run(int warmup, int samples, mb_simd_peak_result *out)
             { "scalar_gflops",      out->scalar_gflops },
             { "vector_over_scalar", out->scalar_gflops > 0.0
                                     ? out->vector_gflops / out->scalar_gflops : 0.0 },
+            { "vector_checksum",    out->vector_checksum },
+            { "scalar_checksum",    out->scalar_checksum },
+            { "thread_pinned",      (double)out->placement.pinned },
+            { "thread_logical_cpu", (double)out->placement.logical_cpu },
         };
         bench_kv_str strs[] = {
             { "isa_compiled",           out->isa_compiled },
@@ -185,6 +239,10 @@ int mb_cpu_simd_peak_run(int warmup, int samples, mb_simd_peak_result *out)
             { "threading",              "single threaded, one core" },
             { "flop_count_derivation",  "iterations * chains * lanes * 2 flops per FMA" },
             { "tag",                    "measured" },
+            { "thread_placement",       out->placement.detail },
+            { "timed_bracket_contains", "the FMA loop only; accumulator setup, the "
+                                        "reduction, thread placement and the "
+                                        "checksum are all outside it" },
         };
         bench_record recs[2];
         memset(recs, 0, sizeof recs);
@@ -209,6 +267,7 @@ int mb_cpu_simd_peak_run(int warmup, int samples, mb_simd_peak_result *out)
 
     free(raw_v);
     free(raw_s);
+    bench_restore_current_thread();
     return 0;
 }
 
@@ -229,6 +288,7 @@ int main(int argc, char **argv)
     printf("  scalar reference %.3f GFLOP/s, speedup %.2fx\n",
            r.scalar_gflops, r.scalar_gflops > 0 ? r.vector_gflops / r.scalar_gflops : 0.0);
     printf("  widest ISA CPUID reports: %s\n", r.isa_widest_supported);
+    printf("  thread placement: %s\n", r.placement.detail);
     if (!r.vector_stats.valid) printf("  INVALID: %s\n", r.vector_stats.invalid_reason);
     return (r.vector_stats.valid && r.scalar_stats.valid) ? 0 : 2;
 }

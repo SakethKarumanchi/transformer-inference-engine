@@ -9,14 +9,27 @@ or from what is quoted in this kickoff; the kickoff paraphrases, the files are a
   4. BENCHMARK_PROTOCOL.md — every measurement rule, including §4.1 noise floor and §4.2 warmup.
   5. MEASUREMENTS.md — prior stages' entries, so this stage's prediction is informed by what
      already happened and its gap explanations do not contradict earlier findings.
-  6. PERSISTENT.md — all open flags, decisions, constraints, and known traps.
+  6. PERSISTENT.md — all open flags, decisions, constraints, and known traps. §7 is cleared and
+     rewritten every session and carries only what the immediately following session needs. §8 is
+     NOT cleared: it holds deferred work items owned by a named stage, each with an ID (W1, W2, …),
+     the evidence behind it, and what would close it. Read both. §8 is the one that outlives this
+     conversation, so an item it names as owned by this stage is a hard obligation and not a note.
   7. CC_PROMPT_FORMAT.md — the house format, before writing the prompt body.
 State plainly if any file is missing from project knowledge rather than proceeding without it.
 
-[PERSISTENT — flags relevant to this stage: [name only the flags where THIS stage is affected. Do
-NOT add a "standing / likely-surfaces" line, do NOT list flags you ruled out, do NOT add "X is NOT
-relevant" exclusions — relevant flags only.]
+[PERSISTENT §7 — flags relevant to this stage: [name only the flags where THIS stage is affected.
+Do NOT add a "standing / likely-surfaces" line, do NOT list flags you ruled out, do NOT add "X is
+NOT relevant" exclusions — relevant flags only.]
 ]
+
+[PERSISTENT §8 — deferred work items. Before writing the prompt, read §8 in full and report to me
+by ID: which items name THIS stage as owner and must be resolved or explicitly deferred in this
+session; which items this stage's work could inadvertently touch, close, or invalidate even though
+it does not own them; and which are irrelevant here. Name the irrelevant ones to me only — do not
+carry them into the prompt. See RULE 21 for what the prompt must then do with each.
+Confirm §8 exists and is populated. If it does not exist, say so plainly and do not proceed as
+though the deferred items are safe in §7 — they are not, because this stage's own session rewrites
+that section.]
 
 PREDICTION BRIEFING — before writing the Claude Code prompt, produce the prediction briefing for
 this stage per RULE 14. I write my guess in this chat BEFORE you finalize the prompt; my guess
@@ -29,7 +42,8 @@ project knowledge and match its house format (== CAPS == section delimiters, the
 order, NEW FILE N / EDIT FILE N — path + inline asserts, plain build-voice, recon-then-build by
 default). See RULE 11.
 
-Give me: (1) the prediction briefing; (2) after I supply my guess, the copy-pastable Claude Code
+Give me: (1) the prediction briefing, and the PERSISTENT §8 report required by RULE 21 — owned,
+touchable, and irrelevant items by ID; (2) after I supply my guess, the copy-pastable Claude Code
 prompt; (3) the checks I run myself at the HARD CHECKPOINT — the RULE 8 user-only set (benchmark
 conditions, profiler access, anything needing a device other than the primary). Do NOT hand me
 the offline gate: per RULE 10 the agent runs build, unit tests, and the correctness gate itself.
@@ -223,3 +237,28 @@ reported exit 0 and the log read "fatal: could not read Username", caused by Git
 Credential Manager resolving the unqualified remote host to a stored account that was
 not the repository owner. The agent verifies the remote ref matches the local HEAD and
 reports both hashes before declaring the push done.
+
+RULE 21 — DEFERRED WORK ITEMS ARE OWNED, NOT REMEMBERED.
+PERSISTENT.md §7 is cleared and rewritten each session; §8 is not. §8 is where an item owned by a
+stage more than one session away lives, so that it survives the clearing. Every kickoff reads §8
+and reports the owned, touchable and irrelevant items by ID before the prompt is written.
+
+For an item THIS stage owns, the Claude Code prompt carries it as an explicit instruction naming
+its ID, and the stage's final report states what happened to it. Three outcomes are legitimate:
+closed, with the evidence; still open, with the Status line updated to say what this session
+learned; or explicitly deferred, with the reason. An item that silently disappears is not an
+outcome — it is the failure this section exists to prevent, and it is the reason a work item owned
+by Stage 11 must not sit in a section that Stage 1 erases.
+
+For an item this stage could TOUCH but does not own, the prompt says so and forbids the agent from
+acting on it unasked. A stage that half-closes another stage's item without being asked destroys
+the evidence that item was waiting for.
+
+An item a stage attempts and fails to close is closed as an item only when the reason it cannot
+close is better-evidenced than the reason it was opened. Leaving a field empty with a real
+diagnosis behind it is a valid result; substituting a plausible figure to make an item go away is
+not, per RULE 16.
+
+Any new work item a stage raises that is owned by a stage more than one session away goes into §8
+with a new ID, not into §7. §7 may carry a one-line pointer to the ID. Never duplicate the text in
+both — a fact recorded twice will eventually disagree with itself.

@@ -29,6 +29,19 @@ One Claude Code session per stage. Each produces one `MEASUREMENTS.md` entry.
 **Stage 0 — Instrument the machine.**
 Repo skeleton, build system, microbenchmarks from `HARDWARE.md` §3, `HARDWARE.md` populated, Nsight Compute availability confirmed. No inference code.
 
+**Stage 0b — Diagnose and remeasure the INVALID CPU microbenchmarks.**
+Scoped diagnostic-and-remeasurement session, added after Stage 0 completed. Two required
+`HARDWARE.md` §2 fields — measured DRAM bandwidth and measured peak FP32 SIMD — are empty
+because every DRAM-tier working set and the vectorised AVX2 configuration exceeded the 5%
+standard-deviation limit in both Stage 0 suite runs. `PROJECT.md` §7 item 4 requires the
+Stage 10 performance model validated across all kernels, and a model with no CPU
+memory-bandwidth term and no CPU SIMD ceiling cannot be. Stage 6's framing — predicted ceiling
+is vector width, measured will be lower, and the gap is the interesting part — requires a
+measured ceiling. Diagnose first, from the raw per-sample timings Stage 0 retained; then
+remeasure under reduced background load. No inference code, no new microbenchmarks, no change
+to the environment fingerprint. An empty field with a better-evidenced reason is a valid
+outcome.
+
 **Stage 1 — Weights and tokenizer.**
 safetensors parsing, tensor layout mapping, BPE tokenizer, encode/decode round-trip against the reference.
 

@@ -207,5 +207,123 @@ class TestSharedVersusGlobalFinding(unittest.TestCase):
         self.assertIn("missing", f["reason"])
 
 
+def _touch(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_bytes(b"")
+    return path
+
+
+class TestStage0bPathGuard(unittest.TestCase):
+    """Stage 0b re-runs two benchmarks and must never touch a Stage 0 results
+    file. bench/results/ and its run1/ and run2/ subdirectories are evidence and
+    are immutable, so every Stage 0b write goes through _guard_stage0b_path()
+    and that guard is asserted here rather than left to review."""
+
+    def test_the_two_stage0b_benchmarks_are_the_two_that_failed(self):
+        self.assertEqual(run_all.STAGE0B_BENCHMARKS,
+                         ["cpu_cache_ladder", "cpu_simd_peak"])
+        for name in run_all.STAGE0B_BENCHMARKS:
+            self.assertIn(name, run_all.BENCHMARK_NAMES)
+
+    def test_the_protocol_counts_match_stage_0(self):
+        self.assertEqual(run_all.STAGE0B_WARMUP, 25)
+        self.assertEqual(run_all.STAGE0B_SAMPLES, 30)
+
+    def test_run_directories_are_under_the_stage0b_root(self):
+        for run in (1, 2):
+            d = run_all.stage0b_run_dir(run)
+            self.assertEqual(d.name, f"run{run}")
+            self.assertEqual(d.parent, run_all.STAGE0B_DIR.resolve())
+
+    def test_a_stage_0_results_path_is_refused(self):
+        for bad in (run_all.RESULTS_DIR,
+                    run_all.RESULTS_DIR / "run1",
+                    run_all.RESULTS_DIR / "run2" / "cpu_cache_ladder.json",
+                    run_all.RESULTS_DIR / "cpu_simd_peak.json",
+                    run_all.CONSOLIDATED):
+            with self.assertRaises(run_all.Stage0ResultsAreImmutable,
+                                   msg=f"{bad} was not refused"):
+                run_all._guard_stage0b_path(bad)
+
+    def test_an_out_of_range_run_number_is_refused(self):
+        with self.assertRaises(ValueError):
+            run_all.stage0b_run_dir(3)
+
+    def test_the_consolidated_file_is_not_the_stage_0_one(self):
+        self.assertNotEqual(run_all.STAGE0B_CONSOLIDATED, run_all.CONSOLIDATED)
+        self.assertEqual(run_all._guard_stage0b_path(run_all.STAGE0B_CONSOLIDATED),
+                         run_all.STAGE0B_CONSOLIDATED.resolve())
+
+
+class TestStage0bRoutingAndInvalidReporting(unittest.TestCase):
+    """The driver must point the child at a Stage 0b directory, label it
+    stage-0b, and list every configuration that is still INVALID as invalid --
+    never average one away and never silently retry it."""
+
+    INVALID_DOC = {
+        "stage": "stage-0b",
+        "records": [
+            {"benchmark": "cpu_simd_peak",
+             "configuration": "vectorised FMA loop, AVX2",
+             "units": "GFLOP/s", "value": 43.0,
+             "raw_samples_ms": [1.0] * 30,
+             "statistics": {"valid": False, "stddev_pct_of_median": 5.6}},
+        ],
+    }
+
+    def setUp(self):
+        self.calls = []
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self._saved_dir = run_all.STAGE0B_DIR
+        self._saved_exe = run_all.exe_path
+        run_all.STAGE0B_DIR = self.root
+        run_all.exe_path = lambda n: _touch(self.root / f"{n}.exe")
+
+    def tearDown(self):
+        run_all.STAGE0B_DIR = self._saved_dir
+        run_all.exe_path = self._saved_exe
+        self._tmp.cleanup()
+
+    def _runner(self, cmd, cwd=None, timeout=None, env=None):
+        self.calls.append({"cmd": list(cmd), "env": env})
+        return 2, "ran\n", ""          # exit 2: ran, at least one INVALID
+
+    def test_the_child_environment_routes_output_and_labels_the_stage(self):
+        run_all.run_stage0b(runs=(1,), telemetry=False, runner=self._runner)
+        self.assertEqual(len(self.calls), 2)
+        for call in self.calls:
+            env = call["env"]
+            self.assertEqual(env["BENCH_STAGE_ID"], "stage-0b")
+            self.assertEqual(Path(env["BENCH_RESULTS_DIR"]).name, "run1")
+            self.assertEqual(Path(env["BENCH_RESULTS_DIR"]).parent,
+                             self.root.resolve())
+            self.assertEqual(call["cmd"][1:], ["25", "30"])
+
+    def test_no_stage_0_results_path_appears_in_any_child_environment(self):
+        run_all.run_stage0b(runs=(1, 2), telemetry=False, runner=self._runner)
+        stage0 = run_all.RESULTS_DIR.resolve()
+        for call in self.calls:
+            d = Path(call["env"]["BENCH_RESULTS_DIR"]).resolve()
+            self.assertNotEqual(d, stage0)
+            self.assertNotIn(d, (stage0 / "run1", stage0 / "run2"))
+
+    def test_invalid_configurations_are_listed_as_invalid(self):
+        run1 = self.root / "run1"
+        run1.mkdir(parents=True, exist_ok=True)
+        for name in run_all.STAGE0B_BENCHMARKS:
+            (run1 / f"{name}.json").write_text(json.dumps(self.INVALID_DOC),
+                                               encoding="utf-8")
+        out = run_all.run_stage0b(runs=(1,), telemetry=False, runner=self._runner)
+        self.assertEqual(out["stage"], "stage-0b")
+        self.assertEqual(out["reference_run"], 2)
+        self.assertEqual(out["n_invalid"], 2)
+        for c in out["invalid_configurations"]:
+            self.assertAlmostEqual(c["stddev_pct_of_median"], 5.6)
+        # reported as "invalid", which is distinct from a failure
+        self.assertEqual(out["runs"]["run1"]["cpu_simd_peak"]["status"], "invalid")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

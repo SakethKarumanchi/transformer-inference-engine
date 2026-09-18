@@ -1,0 +1,579 @@
+{
+  "stage": "stage-0b",
+  "benchmarks": [
+    "cpu_cache_ladder",
+    "cpu_simd_peak"
+  ],
+  "warmup": 25,
+  "samples": 30,
+  "reference_run": 2,
+  "telemetry_requested": true,
+  "runs": {
+    "run1": {
+      "cpu_cache_ladder": {
+        "status": "invalid",
+        "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+        "returncode": 2,
+        "elapsed_s": 5.461,
+        "stdout": "results written: C:\\Users\\saket\\Transformer_Inference_Engine\\bench\\results\\stage0b\\run1/cpu_cache_ladder.json\ncpu_cache_ladder  timer=QueryPerformanceCounter\n  thread placement: pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)\n  OS-reported: L1d 32768 B, L2 262144 B, L3 8388608 B\n        4096 B    143.38 GB/s  stddev 10.947%  INVALID\n      INVALID: stddev is 10.947% of median, above the 5.0% protocol limit\n        8192 B    109.24 GB/s  stddev 11.411%  INVALID\n      INVALID: stddev is 11.411% of median, above the 5.0% protocol limit\n       16384 B    141.22 GB/s  stddev  5.877%  INVALID\n      INVALID: stddev is 5.877% of median, above the 5.0% protocol limit\n       32768 B    140.30 GB/s  stddev  2.602%  VALID\n       65536 B    106.26 GB/s  stddev 16.891%  INVALID\n      INVALID: stddev is 16.891% of median, above the 5.0% protocol limit\n      131072 B    118.44 GB/s  stddev  4.449%  VALID\n      262144 B    108.16 GB/s  stddev  5.489%  INVALID\n      INVALID: stddev is 5.489% of median, above the 5.0% protocol limit\n      524288 B     70.72 GB/s  stddev  4.677%  VALID\n     1048576 B     71.28 GB/s  stddev  2.569%  VALID\n     2097152 B     70.82 GB/s  stddev  2.732%  VALID\n     4194304 B     70.13 GB/s  stddev  6.832%  INVALID\n      INVALID: stddev is 6.832% of median, above the 5.0% protocol limit\n     8388608 B     41.36 GB/s  stddev 17.363%  INVALID\n      INVALID: stddev is 17.363% of median, above the 5.0% protocol limit\n    16777216 B     22.41 GB/s  stddev 21.460%  INVALID\n      INVALID: stddev is 21.460% of median, above the 5.0% protocol limit\n    33554432 B     19.48 GB/s  stddev  9.536%  INVALID\n      INVALID: stddev is 9.536% of median, above the 5.0% protocol limit\n    67108864 B     17.32 GB/s  stddev  6.159%  INVALID\n      INVALID: stddev is 6.159% of median, above the 5.0% protocol limit\n   134217728 B     17.03 GB/s  stddev  5.354%  INVALID\n      INVALID: stddev is 5.354% of median, above the 5.0% protocol limit\n  measured plateau edges (6):\n    below 4096 B, drop 23.8%\n    below 32768 B, drop 24.3%\n    below 262144 B, drop 34.6%\n    below 4194304 B, drop 41.0%\n    below 8388608 B, drop 45.8%\n    below 16777216 B, drop 13.1%\n",
+        "stderr": "",
+        "cpu_frequency_trace": "bench\\results\\stage0b\\run1\\cpu_cache_ladder_cpu_frequency_trace.json",
+        "cpu_frequency_summary": {
+          "pdh_processor_performance_total": {
+            "n": 173,
+            "min": 153.31627250264737,
+            "max": 177.62199699699698,
+            "median": 171.89485122032764
+          },
+          "pdh_performance_limit_total": {
+            "n": 173,
+            "min": 100.0,
+            "max": 100.0,
+            "median": 100.0
+          },
+          "pdh_processor_frequency_total": {
+            "n": 173,
+            "min": 2496.0,
+            "max": 2496.0,
+            "median": 2496.0
+          }
+        },
+        "sampler_duty_cycle_of_one_core": 0.003591522569993912,
+        "sampler_affinity": {
+          "mask_hex": "0xf0",
+          "allowed_logical_cpus": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "excluded_logical_cpus": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "applied": {
+            "ok": true,
+            "reason": null,
+            "previous_mask_hex": "0xff"
+          }
+        },
+        "sampler_interval_s": 0.02,
+        "sampler_per_probe_us": 37.8,
+        "values": {
+          "working_set=4096 B, 268435456 B read per sample": {
+            "value": 143.38351947882646,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 10.947355937518333
+          },
+          "working_set=8192 B, 268435456 B read per sample": {
+            "value": 109.24222443192701,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 11.411255025833276
+          },
+          "working_set=16384 B, 268435456 B read per sample": {
+            "value": 141.21864218017464,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 5.876899360029825
+          },
+          "working_set=32768 B, 268435456 B read per sample": {
+            "value": 140.29972089598044,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 2.602385672448195
+          },
+          "working_set=65536 B, 268435456 B read per sample": {
+            "value": 106.25636544520012,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 16.891213429819828
+          },
+          "working_set=131072 B, 268435456 B read per sample": {
+            "value": 118.44134133149538,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 4.448751323518438
+          },
+          "working_set=262144 B, 268435456 B read per sample": {
+            "value": 108.16159883219825,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 5.489302106980243
+          },
+          "working_set=524288 B, 268435456 B read per sample": {
+            "value": 70.71534668135523,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 4.676652772220243
+          },
+          "working_set=1048576 B, 268435456 B read per sample": {
+            "value": 71.28055869420115,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 2.5694848474001777
+          },
+          "working_set=2097152 B, 268435456 B read per sample": {
+            "value": 70.8244940133968,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 2.7321868221726513
+          },
+          "working_set=4194304 B, 268435456 B read per sample": {
+            "value": 70.12603672555271,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 6.831623862594913
+          },
+          "working_set=8388608 B, 268435456 B read per sample": {
+            "value": 41.35725328014829,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 17.363172245706526
+          },
+          "working_set=16777216 B, 268435456 B read per sample": {
+            "value": 22.40696627713957,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 21.460045545270688
+          },
+          "working_set=33554432 B, 268435456 B read per sample": {
+            "value": 19.47929915701498,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 9.535630770014878
+          },
+          "working_set=67108864 B, 268435456 B read per sample": {
+            "value": 17.315679521894275,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 6.1590132749536854
+          },
+          "working_set=134217728 B, 268435456 B read per sample": {
+            "value": 17.032544487197516,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 5.353641704602314
+          }
+        },
+        "git_commit": "5a203c81f06ec94221c82634eb6727e6e510f5f5",
+        "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+        "stage_recorded": "stage-0b"
+      },
+      "cpu_simd_peak": {
+        "status": "ok",
+        "reason": null,
+        "returncode": 0,
+        "elapsed_s": 0.566,
+        "stdout": "results written: C:\\Users\\saket\\Transformer_Inference_Engine\\bench\\results\\stage0b\\run1/cpu_simd_peak.json\ncpu_simd_peak  49.506 GFLOP/s (AVX2, 256-bit, single thread)  stddev 1.075%  VALID\n  scalar reference 8.472 GFLOP/s, speedup 5.84x\n  widest ISA CPUID reports: AVX2\n  thread placement: pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)\n",
+        "stderr": "",
+        "cpu_frequency_trace": "bench\\results\\stage0b\\run1\\cpu_simd_peak_cpu_frequency_trace.json",
+        "cpu_frequency_summary": {
+          "pdh_processor_performance_total": {
+            "n": 18,
+            "min": 154.49578220858896,
+            "max": 172.71883699350448,
+            "median": 166.49043559596095
+          },
+          "pdh_performance_limit_total": {
+            "n": 18,
+            "min": 100.0,
+            "max": 100.0,
+            "median": 100.0
+          },
+          "pdh_processor_frequency_total": {
+            "n": 18,
+            "min": 2496.0,
+            "max": 2496.0,
+            "median": 2496.0
+          }
+        },
+        "sampler_duty_cycle_of_one_core": 0.003679626547260231,
+        "sampler_affinity": {
+          "mask_hex": "0xf0",
+          "allowed_logical_cpus": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "excluded_logical_cpus": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "applied": {
+            "ok": true,
+            "reason": null,
+            "previous_mask_hex": "0xff"
+          }
+        },
+        "sampler_interval_s": 0.02,
+        "sampler_per_probe_us": 38.65,
+        "values": {
+          "vectorised FMA loop, AVX2": {
+            "value": 49.50638651777693,
+            "units": "GFLOP/s",
+            "valid": true,
+            "stddev_pct_of_median": 1.0752299220643562
+          },
+          "scalar reference of the same loop": {
+            "value": 8.47244469749933,
+            "units": "GFLOP/s",
+            "valid": true,
+            "stddev_pct_of_median": 3.1628872496665053
+          }
+        },
+        "git_commit": "5a203c81f06ec94221c82634eb6727e6e510f5f5",
+        "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+        "stage_recorded": "stage-0b"
+      }
+    },
+    "run2": {
+      "cpu_cache_ladder": {
+        "status": "invalid",
+        "reason": "ran to completion but at least one configuration exceeded the 5% standard-deviation limit and is reported INVALID",
+        "returncode": 2,
+        "elapsed_s": 5.276,
+        "stdout": "results written: C:\\Users\\saket\\Transformer_Inference_Engine\\bench\\results\\stage0b\\run2/cpu_cache_ladder.json\ncpu_cache_ladder  timer=QueryPerformanceCounter\n  thread placement: pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)\n  OS-reported: L1d 32768 B, L2 262144 B, L3 8388608 B\n        4096 B    143.85 GB/s  stddev  1.272%  VALID\n        8192 B    143.91 GB/s  stddev  6.365%  INVALID\n      INVALID: stddev is 6.365% of median, above the 5.0% protocol limit\n       16384 B    143.82 GB/s  stddev  1.284%  VALID\n       32768 B    143.80 GB/s  stddev  1.070%  VALID\n       65536 B    116.85 GB/s  stddev  3.665%  VALID\n      131072 B    114.77 GB/s  stddev 12.284%  INVALID\n      INVALID: stddev is 12.284% of median, above the 5.0% protocol limit\n      262144 B    113.85 GB/s  stddev  4.457%  VALID\n      524288 B     70.82 GB/s  stddev  8.317%  INVALID\n      INVALID: stddev is 8.317% of median, above the 5.0% protocol limit\n     1048576 B     70.74 GB/s  stddev  2.898%  VALID\n     2097152 B     70.70 GB/s  stddev  3.084%  VALID\n     4194304 B     70.81 GB/s  stddev  4.621%  VALID\n     8388608 B     32.42 GB/s  stddev 16.573%  INVALID\n      INVALID: stddev is 16.573% of median, above the 5.0% protocol limit\n    16777216 B     22.05 GB/s  stddev 11.768%  INVALID\n      INVALID: stddev is 11.768% of median, above the 5.0% protocol limit\n    33554432 B     18.75 GB/s  stddev  8.315%  INVALID\n      INVALID: stddev is 8.315% of median, above the 5.0% protocol limit\n    67108864 B     18.54 GB/s  stddev  8.060%  INVALID\n      INVALID: stddev is 8.060% of median, above the 5.0% protocol limit\n   134217728 B     18.23 GB/s  stddev  7.231%  INVALID\n      INVALID: stddev is 7.231% of median, above the 5.0% protocol limit\n  measured plateau edges (5):\n    below 32768 B, drop 18.7%\n    below 262144 B, drop 37.8%\n    below 4194304 B, drop 54.2%\n    below 8388608 B, drop 32.0%\n    below 16777216 B, drop 15.0%\n",
+        "stderr": "",
+        "cpu_frequency_trace": "bench\\results\\stage0b\\run2\\cpu_cache_ladder_cpu_frequency_trace.json",
+        "cpu_frequency_summary": {
+          "pdh_processor_performance_total": {
+            "n": 167,
+            "min": 159.36575938154292,
+            "max": 177.24111762676785,
+            "median": 171.69461735627976
+          },
+          "pdh_performance_limit_total": {
+            "n": 167,
+            "min": 100.0,
+            "max": 100.0,
+            "median": 100.0
+          },
+          "pdh_processor_frequency_total": {
+            "n": 167,
+            "min": 2496.0,
+            "max": 2496.0,
+            "median": 2496.0
+          }
+        },
+        "sampler_duty_cycle_of_one_core": 0.003721989067253838,
+        "sampler_affinity": {
+          "mask_hex": "0xf0",
+          "allowed_logical_cpus": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "excluded_logical_cpus": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "applied": {
+            "ok": true,
+            "reason": null,
+            "previous_mask_hex": "0xff"
+          }
+        },
+        "sampler_interval_s": 0.02,
+        "sampler_per_probe_us": 39.2,
+        "values": {
+          "working_set=4096 B, 268435456 B read per sample": {
+            "value": 143.84837683518575,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 1.271523928686013
+          },
+          "working_set=8192 B, 268435456 B read per sample": {
+            "value": 143.9139289610817,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 6.364935882888278
+          },
+          "working_set=16384 B, 268435456 B read per sample": {
+            "value": 143.8214021209015,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 1.283811440058984
+          },
+          "working_set=32768 B, 268435456 B read per sample": {
+            "value": 143.7982889980086,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 1.0697379474528406
+          },
+          "working_set=65536 B, 268435456 B read per sample": {
+            "value": 116.8456943787399,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 3.6649050446521216
+          },
+          "working_set=131072 B, 268435456 B read per sample": {
+            "value": 114.7724120883909,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 12.284044863437702
+          },
+          "working_set=262144 B, 268435456 B read per sample": {
+            "value": 113.84996861350403,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 4.457060257859985
+          },
+          "working_set=524288 B, 268435456 B read per sample": {
+            "value": 70.81702021991799,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 8.316665805285684
+          },
+          "working_set=1048576 B, 268435456 B read per sample": {
+            "value": 70.74423328834011,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 2.8975107622428014
+          },
+          "working_set=2097152 B, 268435456 B read per sample": {
+            "value": 70.70230884592273,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 3.084323400210121
+          },
+          "working_set=4194304 B, 268435456 B read per sample": {
+            "value": 70.81048194336459,
+            "units": "GB/s",
+            "valid": true,
+            "stddev_pct_of_median": 4.6207587617126284
+          },
+          "working_set=8388608 B, 268435456 B read per sample": {
+            "value": 32.421698894580835,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 16.57305337602293
+          },
+          "working_set=16777216 B, 268435456 B read per sample": {
+            "value": 22.054517415581355,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 11.76838547589027
+          },
+          "working_set=33554432 B, 268435456 B read per sample": {
+            "value": 18.751843745791803,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 8.31496658003512
+          },
+          "working_set=67108864 B, 268435456 B read per sample": {
+            "value": 18.541753566933224,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 8.059639711356784
+          },
+          "working_set=134217728 B, 268435456 B read per sample": {
+            "value": 18.230283536919252,
+            "units": "GB/s",
+            "valid": false,
+            "stddev_pct_of_median": 7.23096306169161
+          }
+        },
+        "git_commit": "5a203c81f06ec94221c82634eb6727e6e510f5f5",
+        "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+        "stage_recorded": "stage-0b"
+      },
+      "cpu_simd_peak": {
+        "status": "ok",
+        "reason": null,
+        "returncode": 0,
+        "elapsed_s": 0.538,
+        "stdout": "results written: C:\\Users\\saket\\Transformer_Inference_Engine\\bench\\results\\stage0b\\run2/cpu_simd_peak.json\ncpu_simd_peak  48.411 GFLOP/s (AVX2, 256-bit, single thread)  stddev 2.773%  VALID\n  scalar reference 8.565 GFLOP/s, speedup 5.65x\n  widest ISA CPUID reports: AVX2\n  thread placement: pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)\n",
+        "stderr": "",
+        "cpu_frequency_trace": "bench\\results\\stage0b\\run2\\cpu_simd_peak_cpu_frequency_trace.json",
+        "cpu_frequency_summary": {
+          "pdh_processor_performance_total": {
+            "n": 17,
+            "min": 150.02005012531328,
+            "max": 173.11393568147014,
+            "median": 161.12271105826397
+          },
+          "pdh_performance_limit_total": {
+            "n": 17,
+            "min": 100.0,
+            "max": 100.0,
+            "median": 100.0
+          },
+          "pdh_processor_frequency_total": {
+            "n": 17,
+            "min": 2496.0,
+            "max": 2496.0,
+            "median": 2496.0
+          }
+        },
+        "sampler_duty_cycle_of_one_core": 0.0035485277590371813,
+        "sampler_affinity": {
+          "mask_hex": "0xf0",
+          "allowed_logical_cpus": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "excluded_logical_cpus": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "applied": {
+            "ok": true,
+            "reason": null,
+            "previous_mask_hex": "0xff"
+          }
+        },
+        "sampler_interval_s": 0.02,
+        "sampler_per_probe_us": 37.45,
+        "values": {
+          "vectorised FMA loop, AVX2": {
+            "value": 48.41103998647496,
+            "units": "GFLOP/s",
+            "valid": true,
+            "stddev_pct_of_median": 2.7734391154352998
+          },
+          "scalar reference of the same loop": {
+            "value": 8.56519586184076,
+            "units": "GFLOP/s",
+            "valid": true,
+            "stddev_pct_of_median": 1.8465528216207745
+          }
+        },
+        "git_commit": "5a203c81f06ec94221c82634eb6727e6e510f5f5",
+        "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+        "stage_recorded": "stage-0b"
+      }
+    }
+  },
+  "invalid_configurations": [
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=4096 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 10.947355937518333
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=8192 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 11.411255025833276
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=16384 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 5.876899360029825
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=65536 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 16.891213429819828
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=262144 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 5.489302106980243
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=4194304 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 6.831623862594913
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=8388608 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 17.363172245706526
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=16777216 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 21.460045545270688
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=33554432 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 9.535630770014878
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=67108864 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 6.1590132749536854
+    },
+    {
+      "run": "run1",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=134217728 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 5.353641704602314
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=8192 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 6.364935882888278
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=131072 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 12.284044863437702
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=524288 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 8.316665805285684
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=8388608 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 16.57305337602293
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=16777216 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 11.76838547589027
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=33554432 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 8.31496658003512
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=67108864 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 8.059639711356784
+    },
+    {
+      "run": "run2",
+      "benchmark": "cpu_cache_ladder",
+      "configuration": "working_set=134217728 B, 268435456 B read per sample",
+      "stddev_pct_of_median": 7.23096306169161
+    }
+  ],
+  "n_invalid": 19,
+  "generated_utc": "2026-09-18T07:28:51Z"
+}

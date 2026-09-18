@@ -96,6 +96,10 @@ typedef struct {
      * does not vary with the working-set size. */
     size_t      bytes_per_sample;
     int         warmup, samples;
+    /* Stage 0b: where the measured thread actually ran. Applied once, outside
+     * every timed bracket, and recorded so a run that failed to pin is not
+     * mistaken for one that did. */
+    bench_thread_placement placement;
 } mb_cache_ladder_result;
 int mb_cpu_cache_ladder_run(int warmup, int samples, mb_cache_ladder_result *out);
 /* Cache sizes as CPUID leaf 4 reports them. Returns 0 on success. */
@@ -112,6 +116,15 @@ typedef struct {
     int         warmup, samples;
     bench_stats vector_stats;
     bench_stats scalar_stats;
+    /* Stage 0b: the arithmetic each path produced, carried out so the unit
+     * test can prove the two paths compute the same thing rather than take it
+     * on trust. Every vector lane starts from the same value as the matching
+     * scalar chain, so vector_checksum == lanes * scalar_checksum in exact
+     * arithmetic and within float rounding in practice. */
+    int         lanes;
+    double      vector_checksum;
+    double      scalar_checksum;
+    bench_thread_placement placement;
 } mb_simd_peak_result;
 int mb_cpu_simd_peak_run(int warmup, int samples, mb_simd_peak_result *out);
 /* Widest SIMD ISA the CPU reports, as a short token ("AVX512F","AVX2","AVX","SSE2"). */
