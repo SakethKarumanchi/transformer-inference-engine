@@ -617,6 +617,55 @@ The sharper lesson came from the tokenizer, and it is about what a reference is 
 *Predict the baseline itself from operation counts and measured machine throughput, before running it.*
 **Status:** not started
 
+#### Prediction  (written 2026-09-18, before implementation)
+
+**What is predicted.** Prefill latency in milliseconds for one forward pass over a prompt of L tokens, and decode latency in milliseconds per generated token at a context length c, with the timing bracket excluding weight loading and tokenization per `BENCHMARK_PROTOCOL.md` §2. There is no KV cache at this stage, so a decode step re-runs the full forward pass over the whole context and its cost is expected to grow with c.
+
+**Assumptions, stated before measurement.**
+
+1. The matmul uses the textbook `ijk` loop order with a dot-product inner loop. Loop interchange is itself a cache optimization and belongs to Stage 5.
+2. The language-model head is computed at every position during prefill, and only at the last position during a decode step.
+3. Scalar code throughout; the compiler does not auto-vectorize the matmul inner loop.
+
+**Inputs and their sources.** Architecture values `n_embd` 768, `n_head` 12, `n_layer` 12, `n_ctx` 1024, `vocab_size` 50257, and the parameter count 124,439,808, from the Stage 1 `MEASUREMENTS.md` entry, which confirmed them against the config shipped with the weights. Measured scalar FP32 ceiling 8.565 GFLOP/s, measured L3-resident bandwidth 70.81 GB/s, cache capacities 32 KiB L1d / 256 KiB L2 / 8 MiB L3 with an effective single-thread edge at 4 MiB, and 64 B cache lines, all from `HARDWARE.md` §2, Stage 0b reference run 2.
+
+**Figures deliberately excluded, with reasons.** The measured vectorised AVX2 peak of 48.411 GFLOP/s: this stage writes scalar code, and using the vectorised ceiling would also pre-empt Stage 6's entire framing (`PERSISTENT.md` §8, W8). The single-channel theoretical ceiling of 23.464 GB/s: it is derived from part numbers rather than measured, and a theoretical peak may not enter a prediction (`PERSISTENT.md` §8, W7). Measured CPU DRAM bandwidth: the `HARDWARE.md` §2 field is empty and Stage 0b left it empty with a better-evidenced reason (`PERSISTENT.md` §8, W1). The measured achievable GPU bandwidth of 170.882 GB/s and every cuBLAS throughput figure: both are GPU denominators and this is a CPU stage (`PERSISTENT.md` §8, W9). The 2496 MHz clock: `HARDWARE.md` §5.3 records it as a static nominal read rather than a live frequency. The 4.4 percent noise floor: it governs speedup claims and this stage claims none.
+
+**Parameter partition, verified against the recorded total.** Per layer the matmul weights are `c_attn` 768×2304 = 1,769,472, `attn.c_proj` 768×768 = 589,824, `mlp.c_fc` 768×3072 = 2,359,296 and `mlp.c_proj` 3072×768 = 2,359,296, totalling 7,077,888. Adding the four biases (2304 + 768 + 3072 + 768 = 6,912) and the two layernorms (4 × 768 = 3,072) gives 7,087,872 per layer, and 85,054,464 across twelve layers. The top level contributes `wte` 38,597,376, `wpe` 786,432 and `ln_f` 1,536, totalling 39,385,344. The sum is 124,439,808, which equals the parameter count recorded in the Stage 1 entry exactly. The partition is therefore confirmed rather than assumed.
+
+Matmul weight elements are 84,934,656 in the layers plus 38,597,376 in the tied head, totalling 123,532,032. The head is added explicitly: because it is tied, `wte` appears once in the parameter count but is used twice per forward pass, so a FLOP count built from the parameter count alone would undercount it.
+
+**FLOPs per token.** Layers: 2 × 84,934,656 = 169,869,312. Head: 2 × 38,597,376 = 77,194,752. Total 247,064,064.
+
+Attention adds, per token at context c, 2 × (12 heads × 64 head_dim × c) for the score matmul and the same again for the weighted sum of values, giving 3,072·c per layer and **36,864·c across twelve layers**. At c = 128 that is 4,718,592, or 1.9 percent of the weight matmuls; it is carried in full below but is not the decisive term at these lengths.
+
+The elementwise work adds 12 × 3072 = 36,864 `gelu_new` tanh evaluations and 144·c softmax exponentials per token. At a scalar transcendental cost of order tens of nanoseconds this lands near 1 percent, and it is the weakest-sourced component of this prediction.
+
+**Why prefill is not compute-bound here.** With `i` as the outermost loop, the whole weight matrix is re-walked for every token. `mlp.c_fc` at 9,437,184 bytes exceeds the 8 MiB L3, and the head at 154,389,504 bytes exceeds it eighteen-fold, so nothing survives between tokens. The prefill weight reuse that makes prefill compute-bound in `BENCHMARK_PROTOCOL.md` §1 is discarded by this loop order. Recovering it is exactly what Stage 5 does.
+
+**Both routes evaluated, on the same unit — one full pass of the weight set for one token.** Memory route, as an optimistic bound: 4 × 123,532,032 = 494,128,128 bytes moved; no measured CPU DRAM figure exists and the theoretical one is barred, so the measured L3 bandwidth is used as a bound DRAM cannot beat, giving 494,128,128 / 70.81e9 = 6.98 ms. That is a floor, not an estimate. Compute route: 247,064,064 / 8.565e9 = 28.85 ms at full ceiling. The compute route binds, by a factor of four over an already-optimistic memory bound, so the prediction rests on the efficiency fraction.
+
+**Efficiency fraction.** f = 0.15 of the measured scalar ceiling, giving an effective 1.28475 GFLOP/s. Three reductions apply against a ceiling measured on a register-resident loop with eight independent FMA chains and no memory traffic: the single accumulator in the inner loop exposes the FMA dependency those eight chains existed to hide; there are two loads per FMA where the ceiling had none; and the strided access to the weight matrix touches a fresh 64-byte line for every 4 bytes used, amortised sixteen-fold only across the middle loop. The plausible range is 0.08 to 0.30. As corroboration only, a naive `ijk` matmul on modern x86 commonly lands between 1 and 2 GFLOP/s, which brackets 1.285.
+
+**Arithmetic for each configuration.** Prefill at L tokens is L × 247,064,064 for the weight matmuls plus 36,864 × L(L+1)/2 for attention. A decode step at context c runs the twelve layers over all c tokens (c × 169,869,312), attends over the same triangle (36,864 × c(c+1)/2), and computes the head once (77,194,752).
+
+| Configuration | FLOPs | Predicted |
+|---|---|---|
+| Prefill, L = 32 | 7,925,514,240 (7.926 GFLOP) | **6,169 ms** |
+| Prefill, L = 64 | 15,888,777,216 (15.889 GFLOP) | **12,367 ms** |
+| Decode step, c = 32 | 5,532,476,928 (5.532 GFLOP) | **4,306 ms per token** |
+| Decode step, c = 64 | 11,025,507,840 (11.026 GFLOP) | **8,582 ms per token** |
+| Decode step, c = 128 | 22,124,815,872 (22.125 GFLOP) | **17,221 ms per token** |
+
+**Decode-to-prefill ratio at length 64: 0.69.** The structural claim is that without a KV cache a decode step re-runs the full forward pass over the entire context, so it costs the same order as a prefill of that length rather than one-Lth of it. It falls below 1.0 only because prefill computes the head at all L positions while a decode step computes it once. Decode cost per token is predicted to rise very nearly linearly in c — the predicted values double from c = 32 to 64 to 128 — and flattening that curve is what Stage 4 exists to do.
+
+**Falsified if:**
+
+- The measured result is more than 3× faster than predicted and the generated machine code proves the matmul inner loop was vectorized. That falsifies the scalar assumption and would pre-empt Stage 6, and it must be caught at build time rather than diagnosed afterwards.
+- The measured result is more than 3× slower than predicted, which would mean DRAM binds harder than the L3-derived floor permits and that the empty CPU DRAM bandwidth field is material at Stage 2 rather than at Stage 5.
+- The decode-to-prefill ratio at equal length comes out near 1/64 rather than near 0.69, or decode cost per token is flat in c. Either would mean a KV cache was built, which is out of scope.
+- A result within 2× in either direction does not falsify the reasoning; it indicates the efficiency fraction was imprecise, which is the expected outcome.
+
 ## Stage 3 — Benchmark harness and correctness gate
 **Status:** not started
 Record: the chosen numerical tolerance and the justification for that specific value.
