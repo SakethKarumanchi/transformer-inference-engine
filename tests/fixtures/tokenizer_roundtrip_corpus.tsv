@@ -1,0 +1,66 @@
+# tests/fixtures/tokenizer_roundtrip_corpus.tsv
+#
+# TEST FIXTURES. These strings exist to break the tokenizer, nothing else.
+# They are NOT the project benchmark prompt set and imply nothing about it:
+# the prompt set and its token counts are Stage 3's decision, PERSISTENT.md
+# section 1, D3. Nothing here is timed and no token count here is a result.
+#
+# Format: three tab-separated columns, one record per line.
+#   1  class tag
+#   2  the record itself, hex encoded, two lower-case hex digits per byte,
+#      empty for the empty record. Hex because the corpus carries embedded
+#      NUL bytes and byte sequences that are not valid UTF-8, which no text
+#      encoding can carry identically into both C and Python.
+#   3  a label, for the reader. Never parsed.
+#
+# Required class tags, one row minimum each, asserted by test_tokenizer:
+#   utf8_multibyte whitespace_runs newlines_tabs empty mid_merge_prefix
+#   special_literal invalid_utf8
+utf8_multibyte	636166c3a9	latin-1 supplement, two-byte
+utf8_multibyte	e4bda0e5a5bdefbc8ce4b896e7958c	CJK, three-byte
+utf8_multibyte	e0a4a8e0a4aee0a4b8e0a58de0a4a4e0a587	devanagari with combining marks
+utf8_multibyte	cea9e28988c3a7e2889ae288abcb9cc2b5	mixed symbols and letters
+utf8_multibyte	f09f9880f09f8e8920656d6f6a69	NON-BMP: four-byte emoji
+utf8_multibyte	61f09f988062	NON-BMP wedged between two letters
+utf8_multibyte	f09d958f206d61746820626f6c64	NON-BMP mathematical alphanumeric
+utf8_multibyte	f09f87aff09f87b5	NON-BMP regional indicator pair
+utf8_multibyte	f48fbfbf	NON-BMP: the highest codepoint there is
+utf8_multibyte	c2a06e627370	no-break space, a whitespace codepoint above ASCII
+whitespace_runs	20206c656164696e67	two leading spaces
+whitespace_runs	20	a single space, whole record
+whitespace_runs	202020	a whitespace run that reaches end of input
+whitespace_runs	747261696c696e67202020	a whitespace run at the end after text
+whitespace_runs	61202062202020632020202064	runs of two, three and four between words
+whitespace_runs	20202020202020202020	ten spaces
+whitespace_runs	2020e28083656d2020	em space inside an ASCII whitespace run
+newlines_tabs	610a620963	newline and tab between letters
+newlines_tabs	0a0a0920	a mixed whitespace run at end of input
+newlines_tabs	6c696e65310d0a6c696e6532	CRLF
+newlines_tabs	0909696e64656e74	leading tabs
+newlines_tabs	780a0a0a79	three newlines between letters
+empty		the empty string
+mid_merge_prefix	546865207175	prefix of "The quick"
+mid_merge_prefix	7472616e73666f726d	prefix of "transformer"
+mid_merge_prefix	7472616e73666f726d6572	the string the previous record is a prefix of
+mid_merge_prefix	696e74	prefix of "inter"
+mid_merge_prefix	696e7465	one byte longer, merges differently
+mid_merge_prefix	696e746572	one byte longer again
+mid_merge_prefix	756e62656c696576	prefix of "unbelievable"
+mid_merge_prefix	756e62656c69657661626c65	the completed word
+mid_merge_prefix	68656c	prefix of "hello"
+mid_merge_prefix	68656c6c6f	the completed word
+special_literal	3c7c656e646f66746578747c3e	the special token string alone
+special_literal	48656c6c6f3c7c656e646f66746578747c3e576f726c64	the special token string wedged into text
+special_literal	61203c7c656e646f66746578747c3e2062	the special token string with spaces around it
+special_literal	3c7c656e646f66746578747c3e3c7c656e646f66746578747c3e	twice, adjacent
+special_literal	3c7c6e6f745f615f7265616c5f746f6b656e7c3e	the same shape, but not a declared token
+invalid_utf8	fffe	two bytes that never appear in UTF-8
+invalid_utf8	61626380646566	a stray continuation byte inside ASCII
+invalid_utf8	c3	a truncated two-byte sequence
+invalid_utf8	eda080	the UTF-8 encoding of a surrogate, which is ill-formed
+invalid_utf8	c0af	an overlong encoding of "/"
+invalid_utf8	f5808080	a codepoint above U+10FFFF
+invalid_utf8	000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff	every byte value from 0x00 to 0xFF
+embedded_nul	00	a single NUL byte
+embedded_nul	006e756c6c00	NUL bytes around text
+embedded_nul	61000062	two adjacent NUL bytes

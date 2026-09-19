@@ -444,7 +444,174 @@ Stage 0 provenance text was appended to, never deleted.
 A standard deviation tells you a run is invalid; only the distribution's **shape and direction** tell you why, and they are free — the raw samples were already on disk. Two configurations failing the same 5% test had opposite causes: the ladder deviated upward from a clean floor, which only contention can do, and the SIMD loop deviated *downward* from a ceiling, which contention cannot do at all. The direction alone separated a machine problem from a benchmark problem before a line of code changed. The sharper lesson is the one that cost a wrong hypothesis: a benchmark that measures a single thread must **say where that thread runs**. Left unpinned on a 4-core SMT laptop, `cpu_simd_peak` was not noisy — it was sampling two different machines, a core it shared and a core it owned, and reporting the mixture as variance. Pinning did not make the measurement quieter so much as make it a measurement of one thing.
 
 ## Stage 1 — Weights and tokenizer
-**Status:** not started
+*No prediction: Stage 1 loads data and verifies a round-trip. There is no performance result to predict, and no prediction was written, invented or substituted. The exemption covers predictions only — every other measurement rule applied in full.*
+**Status:** complete, 2026-09-18
+
+Two reusable C components and their tests: the safetensors weight loader and the byte-level BPE tokenizer. No forward pass, no harness, **no timed run of any kind**, and no number in this entry is a latency.
+
+#### Conditions
+
+- **This session was NOT elevated and did not need to be.** `nvidia-smi -lgc` and `-lmc` were never issued, no clock was locked, no background process was enumerated, and no benchmark-conditions checkpoint was taken. `BENCHMARK_PROTOCOL.md` §2 excludes weight loading and tokenization from timing, and those two are the whole of this stage, so there was nothing to time and no condition to control. **Nothing here is a measurement of the machine.**
+- **Environment fingerprint verified**, verbatim: `{"match": true, "differences": [], "fields_compared": 26}`, **exit 0**, from `.venv/Scripts/python.exe bench/machine_state.py verify`. This is the first stage able to run that check against a stored file; Stage 0b wrote it.
+- **Compiler and flags UNCHANGED and confirmed byte-identical** to `HARDWARE.md` §5.5: host `/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG`, CUDA `-D_WINDOWS -Xcompiler=" /EHsc" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75`, MSVC 19.44.35229.0, nvcc 13.1.80, sm_75. `CMakeLists.txt` was appended to only — the frozen flag block, the toolset check and every existing target are untouched.
+- **Reference environment, confirmed by import rather than by listing:** `.venv-oracle/Scripts/python.exe`, Python **3.12.10**, **tokenizers 0.23.2**, **safetensors 0.8.0**, **numpy 2.5.3**. Invoked only by that explicit path. **Nothing was installed anywhere** — not into `.venv`, not into `.venv-oracle`. The project `.venv` (3.14.2, torch 2.14.0+cu130) was used only for the fingerprint check.
+- **Offline gate green:** clean build through `scripts/build.ps1 -Clean`, then **17 of 17 CTest tests pass** in 55.6 s, longest single test 11.9 s against the 300 s cap. One fix-driven rerun, no blind looping.
+- Artifacts present on disk before the session, nothing downloaded: `models/gpt2/model.safetensors` 548,105,171 B, `tokenizer.json` 1,355,256 B, `vocab.json` 1,042,301 B, `merges.txt` 456,318 B, `config.json` 665 B, `generation_config.json` 124 B, `tokenizer_config.json` 26 B. All gitignored, proven with `git check-ignore -v` before staging.
+
+#### Q3 — CLOSED. The shipped config confirms all five Stage 0 values
+
+`PERSISTENT.md` §2 Q3 recorded that Stage 0 built the five cuBLAS GEMM shapes — and therefore the prefill denominator for the entire project — on values read from the **published** `config.json` of `openai-community/gpt2`, fetched over the network 2026-09-16. Those were re-read here from the **config file shipped with the downloaded weights**, a different artifact.
+
+| Value | Stage 0, network config 2026-09-16 | Shipped `models/gpt2/config.json` | Verdict |
+|---|---|---|---|
+| `n_embd` | 768 | 768 | **match** |
+| `n_head` | 12 | 12 | **match** |
+| `n_layer` | 12 | 12 | **match** |
+| `n_ctx` | 1024 | 1024 | **match** |
+| `vocab_size` | 50257 | 50257 | **match** |
+
+**Q3 outcome: CONFIRMED. All five identical.** The five (N, K) shapes — QKV 2304×768, attention output 768×768, FFN up 3072×768, FFN down 768×3072, LM head 50257×768 — stand unchanged, **microbenchmark 6 was NOT re-run**, and no timed run was performed in this session. A confirmation is a result: the denominator the whole project rests on is now sourced from the artifact it claims to describe rather than from a network fetch.
+
+Corroborated independently twice over: the reference tokenizer reports vocabulary **50257**, equal to the shipped `vocab_size` (asserted in `tests/test_stage1_oracle.py`), and the enumerated `wte.weight` is **[50257, 768]**.
+
+#### Config fields recorded for Stage 2, so Stage 2 reads an artifact rather than assuming
+
+| Field | Shipped value | What it settles for Stage 2 |
+|---|---|---|
+| `layer_norm_epsilon` | **1e-05** | the epsilon inside every layernorm |
+| `activation_function` | **"gelu_new"** | the tanh approximation of GELU, not the erf form and not ReLU |
+| positional scheme | **learned absolute** | `n_positions` 1024 and a stored `wpe.weight` [1024, 768]; no rotary or sinusoidal tensor exists in the file |
+| `n_positions` / `n_ctx` | 1024 / 1024 | identical, so no ambiguity about the context bound |
+| `attn_pdrop`, `embd_pdrop`, `resid_pdrop` | 0.1 each | training-only; inference applies no dropout |
+| `bos_token_id`, `eos_token_id` | 50256, 50256 | the same id, which is also the one added token |
+| `architectures` | ["GPT2LMHeadModel"] | a head exists in the architecture even though no head tensor is stored — see below |
+| `model_type`, `initializer_range` | "gpt2", 0.02 | recorded for completeness; initializer range is a training artifact |
+| `summary_*` | `cls_index`, proj, dropout 0.1 | classification-head fields, unused by the language-model path |
+| `tokenizer_config.json` | `model_max_length` 1024 | agrees with `n_ctx` |
+| `generation_config.json` | bos/eos 50256, `transformers_version` 4.26.0.dev0 | sampling defaults, which Stage 2 does not use |
+
+#### The weight file as the file presents itself, read from the bytes
+
+| Fact | Value | How it was established |
+|---|---|---|
+| header length prefix | **unsigned 64-bit little endian**, bytes 0..7, value **14283** | assembled byte by byte so host endianness never enters the result |
+| header | UTF-8 JSON, **pure ASCII**, no inter-token whitespace, **no backslash escape of any kind**, 161 members | read and scanned |
+| members | **160 tensors + one `__metadata__`** whose value is `{"format":"pt"}` | metadata excluded from the tensor count, asserted |
+| dtype | **F32 for all 160** | the only spelling present |
+| `data_offsets` | `[begin, end)`, **relative to the start of the data segment**, not to the file | 8 + 14283 + 548090880 = 548105171 = the file size, exactly |
+| data segment start | **14291** | 8 + 14283 |
+| alignment | **NONE** | 14291 is not a multiple of 8, 16 or 64. The file carries no padding, so a caller must copy bytes out before reading them as aligned floats; `st_tensor_read` does exactly that |
+
+#### Tensor inventory, and where it was recorded
+
+The complete inventory — every tensor's name, dtype, shape, declared `begin`/`end`, absolute `file_offset`, byte length, determined orientation and the evidence class for that orientation, plus the language-model head finding — is committed at **`src/gpt2_tensor_inventory.json`**, produced by the C loader itself (`src/safetensors.c` under `ST_INVENTORY_MAIN`, built as `safetensors_tool` from the same source the unit test links).
+
+**It is deliberately NOT in `bench/results/`.** That directory is defined by `BENCHMARK_PROTOCOL.md` §9 as the structured output of runs and is read by the Stage 10 model as a contract; an inventory is not a benchmark result, carries no timing, and must not be mistakable for one. **This stage wrote nothing to `bench/results/`.**
+
+Composition of the 160: 4 top-level (`wte.weight`, `wpe.weight`, `ln_f.weight`, `ln_f.bias`) plus 13 per layer × 12 layers.
+
+#### Orientation of every 2-D weight, and the limit of what this stage proves
+
+| Tensor (count) | Shape | Orientation | Evidence class |
+|---|---|---|---|
+| `h.*.attn.c_attn.weight` (12) | [768, 2304] | axis 0 = input, axis 1 = output | **pinned by bias length** — sibling `c_attn.bias` is [2304]; 2304 = 3 × n_embd(768) |
+| `h.*.mlp.c_fc.weight` (12) | [768, 3072] | axis 0 = input, axis 1 = output | **pinned by bias length** — sibling bias [3072] = 4 × n_embd |
+| `h.*.mlp.c_proj.weight` (12) | [3072, 768] | axis 0 = input, axis 1 = output | **pinned by bias length** — sibling bias [768] = n_embd, and 3072 = 4 × n_embd is the input |
+| `wte.weight` (1) | [50257, 768] | axis 0 = index, axis 1 = feature | **pinned by shape arithmetic against the shipped config** — 50257 = vocab_size, 768 = n_embd |
+| `wpe.weight` (1) | [1024, 768] | axis 0 = index, axis 1 = feature | **pinned by shape arithmetic against the shipped config** — 1024 = n_ctx |
+| `h.*.attn.c_proj.weight` (12) | [768, 768] | **UNRESOLVED BY SHAPE** | axes equal; the sibling bias [768] matches both and therefore discriminates nothing |
+
+The bias-length argument is arithmetic on the file's own shapes and assumes no convention: **a bias has one entry per output**, so where its length matches exactly one extent, that extent is the output axis. It pins every rectangular weight in the file to **[input, output]** — the storage order a `Conv1D`-style checkpoint uses, which is the **transpose** of the `[output, input]` convention a `nn.Linear`-style implementation expects. Where an implementation's convention and the checkpoint's storage convention disagree, the loader is where the reconciliation happens, explicitly; the inventory record carries that statement per tensor.
+
+For the twelve square `attn.c_proj.weight` tensors, shape cannot settle it and this entry does not pretend otherwise. The alternative evidence, **stated as inference and not as established fact**: every rectangular 2-D weight in this same file is pinned by its own bias to [input, output], and these tensors are named and grouped alongside them within the same layer, so the loader reads them the same way.
+
+**THE LIMIT, STATED PLAINLY.** Orientation is a **semantic** mapping and this stage does not verify it. The exact byte comparison below does **not** test it either, because both sides read the same bytes from the same file and both report the shape as stored — no orientation error is detectable that way. The loader is **parsed and shape-checked, not verified**. The proof lands at **Stage 2**, when a forward pass produces logits that either match the reference or do not.
+
+#### The language-model head is TIED, not stored
+
+Settled by inspecting the enumeration, not assumed: **zero** of the 160 tensor names contain `lm_head`, and **exactly one** matrix in the file carries the vocabulary size against the embedding width — `wte.weight` [50257, 768]. The head is therefore not stored, and **Stage 2 must tie it to the token embedding**. A loader that does not tie it fails at Stage 2 in a way that looks like a bug in the head. The Stage 1 loader stores no head tensor because the file declares none; tying is a forward-pass decision and is not Stage 1's to make.
+
+#### Parameter and buffer byte split — recomputed, after a first computation that was WRONG
+
+The twelve `h.*.attn.bias` tensors, shape [1, 1, 1024, 1024], are **registered causal-mask buffers, not learnable parameters**: their contents were checked and every element is 0 or 1, with the [1024, 1024] plane exactly lower-triangular ones.
+
+**The first computation of the split was wrong and is recorded rather than quietly replaced.** It selected the buffer bucket with a suffix test for `attn.bias`, which also matches `c_attn.bias` — so the twelve **learnable QKV bias tensors** were counted as mask buffers. The error was 12 × 2304 × 4 = **110,592 B** moved into the wrong bucket, and it inflated the buffer figure to 50,442,240 B while deflating the parameter count by 27,648 parameters.
+
+Recomputed from the enumerated inventory, bucket by bucket `[derived]`:
+
+| Bucket | Bytes | Arithmetic |
+|---|---|---|
+| causal-mask buffers, 12 × `h.*.attn.bias` | **50,331,648** | 12 × 1024 × 1024 × 4 = 50,331,648 |
+| everything else — the parameters | **497,759,232** | 548,090,880 − 50,331,648 |
+| data segment, for reconciliation | **548,090,880** | 50,331,648 + 497,759,232, equal to 548,105,171 − 14,291 |
+
+**Parameter count = 497,759,232 B ÷ 4 B per F32 = 124,439,808 parameters, remainder 0.**
+
+`TECHNICAL_SPEC.md` §1 states "124M parameters" for this model. **They agree** at the precision §1 states: 124,439,808 rounds to 124M. Note that the count includes `wte.weight`'s 50257 × 768 = 38,597,376 parameters once; because the head is tied rather than stored, it adds nothing further.
+
+Why the correction mattered enough to record: a parameter count is an input to Stage 2's operation counts and from there to the Stage 10 model, where a silently wrong figure would be looked for last.
+
+**Recommendation to Stage 2, offered as a recommendation and not as a decision Stage 1 is entitled to take: regenerate the causal mask rather than load it.** It is 50,331,648 B of the file — 9.2% of the data segment — to express a triangular predicate that costs two integer comparisons per element.
+
+#### The exact comparison against the reference
+
+**160 of 160 tensors, exact, zero tolerance, zero differences.** A tolerance would hide precisely the errors the comparison exists to catch: both sides read the same bytes from the same file, so any difference at all is a defect rather than noise.
+
+Covered, per tensor: the **name set** in both directions (nothing present on one side and absent on the other), the **dtype** (all F32 / numpy float32), the **shape**, the **byte length**, and **every byte** read from the file at the absolute `file_offset` the C loader recorded, compared against `safetensors.safe_open`. Differences are reported as the first differing byte with both values, not as a count. No tensor was excluded and no subset was taken.
+
+#### Tokenizer — which artifacts, and what the reference actually does
+
+The three artifacts **agree exactly**: the vocabulary object inside `tokenizer.json` equals `vocab.json` entry for entry, and its merge list equals `merges.txt` line for line after the `#version: 0.2` header. **No disagreement to report.**
+
+**The C tokenizer consumes `tokenizer.json`**, for three reasons. It is the only artifact that **declares the added tokens**; it is the only one that declares the **pre-tokenizer configuration** (ByteLevel, `add_prefix_space` false); and it is the **easier parse**, using only `\"` (311) and `\\` (121) escapes where `vocab.json` uses `\uXXXX` **35,908 times** and would drag UTF-16 surrogate reassembly into the inference path for no gain. `merges.txt` is still read — by the unit test, as an independent cross-check that every sampled merge pair carries the rank the artifact gives it and that the merge count matches.
+
+Two reference behaviours were found by probing and matched rather than assumed:
+
+1. **`<|endoftext|>` in ordinary text is not literal.** The reference splits it out as the added token, id **50256**, before the regex ever sees it, and only `skip_special_tokens=False` decoding round-trips. The C tokenizer reads the added-token table from the artifact and does the same, so the round trip stays byte-exact. Had the tokenizer been built from `vocab.json` + `merges.txt`, this behaviour would have had to be assumed.
+2. **The pre-tokenizer's whitespace rule is not the obvious one.** `\s+(?!\S)` makes a whitespace run that is followed by a non-space character **give up its last character to the next piece**, while a run reaching end of input stays whole: `"a b  c   d"` splits as `a | ·b | · | ·c | ·· | ·d`, and `"x\r\ny"` splits `\r` and `\n` into separate pieces. Checked against the reference before being written, not deduced afterwards.
+
+#### The round trip, per class, with the two checks reported separately
+
+48 records, seven required classes plus an embedded-NUL class. **Both checks:** `decode(encode(s))` byte-exact, **and** the id sequence element for element against the committed reference sequence. The second is the one that matters — a decode round trip alone passes under any bijection and would not catch a merge-order bug.
+
+| Class | Records | decode round trip byte-exact | id sequence equals the reference |
+|---|---|---|---|
+| `utf8_multibyte` (5 of them outside the BMP) | 10 | **10 / 10** | **10 / 10** |
+| `whitespace_runs` | 7 | **7 / 7** | **7 / 7** |
+| `newlines_tabs` | 5 | **5 / 5** | **5 / 5** |
+| `empty` | 1 | **1 / 1** | **1 / 1** — encodes to the empty sequence, decodes to zero bytes |
+| `mid_merge_prefix` | 10 | **10 / 10** | **10 / 10** |
+| `special_literal` | 5 | **5 / 5** | **5 / 5** |
+| `embedded_nul` | 3 | **3 / 3** | **3 / 3** |
+| `invalid_utf8` | 7 | **7 / 7** | **no reference sequence exists — see below** |
+
+**410 ids compared in total**, every one below the vocabulary size 50257 read from the artifact. Fixtures: `tests/fixtures/tokenizer_roundtrip_corpus.tsv` (hex-encoded, so embedded NULs and non-UTF-8 bytes survive identically into both C and Python) and `tests/fixtures/tokenizer_expected_ids.tsv`, generated by `reference/stage1_oracle.py emit` and committed. Both are labelled **TEST FIXTURES** in their headers. **They are not the benchmark prompt set and imply nothing about it** — that is Stage 3's decision, §1 D3.
+
+**The invalid-UTF-8 class has no reference id sequence, and that is the correct outcome, not a gap in the work.** The reference API takes `str`: raw `bytes` and a surrogate-escaped `str` are both rejected with `TypeError: TextInputSequence must be str`. The fixture records `NO_REFERENCE` with that reason — an empty field with a stated cause, never a plausible placeholder — and the C behaviour for such input is **documented rather than discovered**: a byte that begins no well-formed UTF-8 sequence is consumed as one character of class "other". The decode round trip is still asserted byte-exact for every one of those records, including one containing all 256 byte values.
+
+**The alternative that existed and was not taken:** the raw bytes could have been mapped through the byte-level encoder into a string the reference API does accept, which would have produced an id sequence and a green check. That mapping is **part of the implementation under test**, so the comparison would have been partly against itself. A weaker oracle presented as a passing check is worse than a stated gap.
+
+#### The no-libraries claim — three judgement calls, each resolved at build time
+
+`TECHNICAL_SPEC.md` §2 places the tokenizer and the weight loader in C as part of the no-libraries claim, and Stage 1 is the first stage at which that claim could be broken. It was not: the safetensors header parsing, the tensor mapping, the BPE merge loop and the byte-level encoding and decoding are all in C. A library appears only on the far side of a comparison, in `reference/stage1_oracle.py`, which the engine never calls.
+
+1. **The safetensors header is JSON — a minimal parser was written rather than a dependency taken.** The reason is not purity: a parser pulled in here is a parser in the inference path for the life of the project, and the document is fixed, small and machine-generated. **Accepted:** objects, arrays, strings, unsigned decimal integers, inter-token whitespace, the escapes `\" \\ \/ \b \f \n \r \t`, and unknown keys inside a tensor object (parsed and discarded, so a future key does not break the read). **Rejected, each with a named error:** `\uXXXX`, `true`/`false`/`null`, signs, decimal points, exponents, trailing commas, unterminated strings, raw control bytes inside strings, and any trailing byte after the top-level object.
+2. **`tokenizer.json` gets a second, separate scanner** rather than sharing the first. The subsets genuinely differ — 14 KB flat and escape-free against 1.3 MB nested with a 50257-entry string table — and one general parser spanning both would be the very dependency-shaped object being avoided.
+3. **The Unicode class table is generated, and this is the third judgement call.** The pre-tokenizer pattern uses `\p{L}`, `\p{N}` and `\s`, whose membership depends on the Unicode version of whichever engine evaluates them. Rather than copy a Unicode data file or link a regex engine, **every codepoint from U+0000 to U+10FFFF was put through the reference pre-tokenizer and classified by the piece it landed in**, and the result — **831 ranges** — was baked into `src/tokenizer.c` as a static table with a binary search. No library runs at inference time. **The dependency this creates must be stated:** the table encodes the behaviour of **tokenizers 0.23.2** specifically, and a different reference version could classify differently, in which case the C tokenizer would be matching a reference nobody is running. The confirmed oracle versions are recorded above under Conditions. **The evidence that copying a Unicode data file would have been wrong:** the derived table disagrees with **Python 3.12's own `unicodedata` at 5008 codepoints** — U+001C..U+001F, which Python calls whitespace and the reference treats as "other", and a block of codepoints Python's tables still call unassigned while the reference classifies them as letters.
+
+One further check of the same kind: the byte-level alphabet was **verified against the reference rather than trusted**. 243 of the 256 byte values were observed in the reference's own mapped output and every one agreed, and the constructed 256-character alphabet set equals the reference's alphabet exactly. The 13 that could not be checked — 0xC0, 0xC1 and 0xF5..0xFF — are precisely the bytes that cannot appear in valid UTF-8, so the reference can never be made to emit them; they are exercised instead by the invalid-UTF-8 corpus records.
+
+#### Where the artifacts contradicted the documents
+
+1. **`TECHNICAL_SPEC.md` §4 did not describe the repository, and was amended in place on operator instruction.** It listed neither `tests/` nor `scripts/`, both of which exist and both of which appear in `CLAUDE.md`'s layout, and it had no home for a committed data artifact. Added to the existing tree, nothing regenerated and nothing reordered: `tests/`, `scripts/`, `models/` (gitignored, never committed), and `src/gpt2_tensor_inventory.json`. §1 was not touched and its warning against trusting its own table stands. The reason this was fixed rather than left as a reported discrepancy: §4 is the document every later stage prompt is written against for output placement, so a layout missing two top-level directories would mislead the Stage 2 prompt exactly as the dangling "see §7" pointer would have.
+2. **`CLAUDE.md` carried a dangling filename.** The operator renamed `CC_PROMPT_FORMAT.md` to `CLAUDE_CODE_PROMPT_FORMAT.md` before the session; `CLAUDE.md` still named the old file in its document-rules section. Fixed in place, one line. The four remaining references inside `KICKOFF_TEMPLATE.md` and the renamed file's own first line were **left untouched** — they are inside the operator's authoring tools.
+3. **No architecture value in any document was contradicted.** Q3 confirmed all five, and `TECHNICAL_SPEC.md` §1's "124M parameters" agrees with the 124,439,808 counted from the file.
+
+#### What this taught
+
+A weight loader has two failure modes and only one of them is detectable at this stage. Structural errors — a byte range off the end, a length disagreeing with the shape, a header that is not the document it claims to be — are all catchable from the file alone, and ten asserts catch them. Semantic errors are not: **orientation cannot be tested by comparing bytes**, because a transposed reading of the same bytes is byte-identical to a correct one. The honest output of this stage is therefore a loader that is *parsed and shape-checked*, plus an explicit statement of what remains unproven and where it gets proven.
+
+The sharper lesson came from the tokenizer, and it is about what a reference is for. Three behaviours would each have been guessed wrong: that `<|endoftext|>` is literal text (it is not), that a whitespace run is one piece (a run followed by text gives up its last character), and that Unicode letter membership is whatever the nearest Unicode table says (the reference disagrees with Python's at 5008 codepoints). None of those is discoverable by reading the specification of byte-level BPE. Each was found by **probing the reference and matching what it does rather than what it ought to do** — and the third produced a generated artifact whose provenance is a probe rather than a citation. The corollary is the one to carry: where the reference cannot be probed at all, as with byte sequences it refuses to accept, the correct output is a documented behaviour and a stated gap, not an oracle bent until it answers.
 
 ## Stage 2 — Naive C forward pass (baseline)
 *Predict the baseline itself from operation counts and measured machine throughput, before running it.*

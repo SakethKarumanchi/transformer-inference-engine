@@ -108,6 +108,7 @@ Build only after Stage 12. Each is independently valuable; none is required for 
   MEASUREMENTS.md  LEARNING.md  PERSISTENT.md  README.md
   src/
     main.c  model.c/h  tokenizer.c/h  safetensors.c/h
+    gpt2_tensor_inventory.json   # Stage 1, committed; Stage 2 consumes it
     gemm/    gemm_naive.c  gemm_blocked.c  gemm_simd.c
     cuda/    forward.cu  gemm_naive.cu  gemm_tiled.cu
              flash_attention.cu  gemm_systolic.cu
@@ -123,6 +124,9 @@ Build only after Stage 12. Each is independently valuable; none is required for 
     results/
   reference/
     reference_impl.py
+  tests/              # one test per source file, registered with CTest
+  scripts/            # build.ps1 and the CMake helpers
+  models/             # downloaded weights and tokenizer artifacts; gitignored, never committed
   dashboard/
 ```
 
