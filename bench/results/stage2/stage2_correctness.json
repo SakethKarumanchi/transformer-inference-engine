@@ -1,0 +1,260 @@
+{
+ "stage": "stage-2",
+ "kind": "correctness",
+ "generated_by": "tests/test_reference_impl.py",
+ "git_commit": "b33cb35a1573b2158f6ffd8afea4f268323a0db3",
+ "timestamp_utc": "2026-09-19T14:09:57Z",
+ "reference": {
+  "implementation": "reference/reference_impl.py, hand-written in torch",
+  "torch": "2.14.0+cu130",
+  "numpy": "2.5.3",
+  "device": "cpu",
+  "torch_num_threads": 1,
+  "weight_reader": "stdlib + numpy",
+  "safetensors_importable": false,
+  "tensors_verified_against_inventory": 160,
+  "what_agreement_proves": "the two implementations agree; NOT that either matches GPT-2. Both were written in one session from one reading of the architecture. The external discriminator is readable English from published weights, which catches a transposed weight, an untied head, a broken causal mask and a wrong positional scheme, and does not catch a wrong layernorm epsilon, a plain gelu substituted for gelu_new, or a mildly wrong attention scale."
+ },
+ "prompt_set": {
+  "status": "PLACEHOLDER",
+  "open_decision": "D3",
+  "owning_stage": 3,
+  "work_item": "W11",
+  "source": "tests/fixtures/stage2_placeholder_prompts.tsv"
+ },
+ "tolerance": {
+  "adopted": false,
+  "owning_stage": 3,
+  "open_decision": "D2",
+  "reason": "BENCHMARK_PROTOCOL.md section 5 sets the numerical tolerance in Stage 3 and D2 is open. Stage 2 measures and reports the divergence distribution and adopts no threshold; a threshold invented and passed by its own author would be circular."
+ },
+ "greedy": {
+  "prompt_ids": [
+   464,
+   3139,
+   1748,
+   286,
+   4881,
+   318
+  ],
+  "engine_sequence": [
+   464,
+   3139,
+   1748,
+   286,
+   4881,
+   318,
+   262,
+   3139,
+   286
+  ],
+  "reference_sequence": [
+   464,
+   3139,
+   1748,
+   286,
+   4881,
+   318,
+   262,
+   3139,
+   286
+  ],
+  "match": true,
+  "tokens_generated": 3
+ },
+ "configurations": [
+  {
+   "label": "prefill, L=8 tokens, placeholder prompt p1",
+   "positions": 8,
+   "vocab_size": 50257,
+   "token_ids": [
+    464,
+    46371,
+    6204,
+    379,
+    262,
+    886,
+    286,
+    257
+   ],
+   "max_abs_diff": 0.00031280517578125,
+   "max_abs_diff_position": 0,
+   "max_abs_diff_token_id": 23601,
+   "max_rel_diff": 8.695791668248096e-06,
+   "rel_diff_denominator": "|reference| + 1e-6, elementwise",
+   "elements_below_rel_floor": 0,
+   "mean_abs_diff": 6.475667211341809e-05,
+   "median_abs_diff": 4.57763671875e-05,
+   "rms_abs_diff": 9.156058079173473e-05,
+   "abs_diff_percentiles": {
+    "p50": 4.57763671875e-05,
+    "p90": 0.000194549560546875,
+    "p99": 0.00025177001953125,
+    "p99_9": 0.000278472900390625,
+    "max": 0.00031280517578125
+   },
+   "rel_diff_percentiles": {
+    "p50": 4.84209417064136e-07,
+    "p90": 4.933988382019463e-06,
+    "p99": 6.2852442213378795e-06,
+    "p99_9": 6.9665409131631044e-06,
+    "max": 8.695791668248096e-06
+   },
+   "top1_agreement_positions": 8,
+   "top1_agreement_fraction": 1.0,
+   "top5_set_agreement_positions": 8,
+   "top5_set_agreement_fraction": 1.0,
+   "reference_top1_top2_margin": {
+    "min": 0.03231048583984375,
+    "median": 0.26848602294921875,
+    "max": 5.459840774536133,
+    "per_position": [
+     0.31000518798828125,
+     0.07794952392578125,
+     0.22696685791015625,
+     1.1176605224609375,
+     0.03231048583984375,
+     5.459840774536133,
+     0.18910980224609375,
+     0.6044158935546875
+    ]
+   },
+   "margin_min_over_max_abs_diff": 103.29268292682927,
+   "cproj_reading": "as-stored"
+  },
+  {
+   "label": "prefill, L=16 tokens, placeholder prompt p1",
+   "positions": 16,
+   "vocab_size": 50257,
+   "token_ids": [
+    464,
+    46371,
+    6204,
+    379,
+    262,
+    886,
+    286,
+    257,
+    7135,
+    27591,
+    286,
+    1956,
+    11,
+    290,
+    329,
+    749
+   ],
+   "max_abs_diff": 0.00031280517578125,
+   "max_abs_diff_position": 0,
+   "max_abs_diff_token_id": 23601,
+   "max_rel_diff": 8.695791668248096e-06,
+   "rel_diff_denominator": "|reference| + 1e-6, elementwise",
+   "elements_below_rel_floor": 0,
+   "mean_abs_diff": 5.5687387244298196e-05,
+   "median_abs_diff": 4.57763671875e-05,
+   "rms_abs_diff": 7.649292418075295e-05,
+   "abs_diff_percentiles": {
+    "p50": 4.57763671875e-05,
+    "p90": 0.0001068115234375,
+    "p99": 0.000244140625,
+    "p99_9": 0.000270843505859375,
+    "max": 0.00031280517578125
+   },
+   "rel_diff_percentiles": {
+    "p50": 4.3073534662024687e-07,
+    "p90": 1.643703820968906e-06,
+    "p99": 6.025966688182439e-06,
+    "p99_9": 6.778935250604753e-06,
+    "max": 8.695791668248096e-06
+   },
+   "top1_agreement_positions": 16,
+   "top1_agreement_fraction": 1.0,
+   "top5_set_agreement_positions": 16,
+   "top5_set_agreement_fraction": 1.0,
+   "reference_top1_top2_margin": {
+    "min": 0.01438140869140625,
+    "median": 0.45702362060546875,
+    "max": 5.459844589233398,
+    "per_position": [
+     0.31000518798828125,
+     0.0779571533203125,
+     0.22695159912109375,
+     1.1176681518554688,
+     0.0323028564453125,
+     5.459844589233398,
+     0.18909072875976562,
+     0.6044235229492188,
+     0.31008148193359375,
+     0.01438140869140625,
+     0.206024169921875,
+     0.814483642578125,
+     0.6039657592773438,
+     1.0269851684570312,
+     1.30291748046875,
+     3.945972442626953
+    ]
+   },
+   "margin_min_over_max_abs_diff": 45.97560975609756,
+   "cproj_reading": "as-stored"
+  },
+  {
+   "label": "prefill, L=8 tokens, TRANSPOSED reading of h.*.attn.c_proj.weight",
+   "positions": 8,
+   "vocab_size": 50257,
+   "token_ids": [
+    464,
+    46371,
+    6204,
+    379,
+    262,
+    886,
+    286,
+    257
+   ],
+   "max_abs_diff": 121.46775817871094,
+   "max_abs_diff_position": 2,
+   "max_abs_diff_token_id": 31538,
+   "max_rel_diff": 0.9622573281902299,
+   "rel_diff_denominator": "|reference| + 1e-6, elementwise",
+   "elements_below_rel_floor": 0,
+   "mean_abs_diff": 71.61490447641185,
+   "median_abs_diff": 75.33951187133789,
+   "rms_abs_diff": 76.59390708292848,
+   "abs_diff_percentiles": {
+    "p50": 75.33951187133789,
+    "p90": 104.91305923461914,
+    "p99": 112.60234260559083,
+    "p99_9": 115.73724182128954,
+    "max": 121.46775817871094
+   },
+   "rel_diff_percentiles": {
+    "p50": 0.8632385115351922,
+    "p90": 0.8937059801124727,
+    "p99": 0.9094531266376719,
+    "p99_9": 0.9249210392064041,
+    "max": 0.9622573281902299
+   },
+   "top1_agreement_positions": 2,
+   "top1_agreement_fraction": 0.25,
+   "top5_set_agreement_positions": 0,
+   "top5_set_agreement_fraction": 0.0,
+   "reference_top1_top2_margin": {
+    "min": 0.03231048583984375,
+    "median": 0.26848602294921875,
+    "max": 5.459840774536133,
+    "per_position": [
+     0.31000518798828125,
+     0.07794952392578125,
+     0.22696685791015625,
+     1.1176605224609375,
+     0.03231048583984375,
+     5.459840774536133,
+     0.18910980224609375,
+     0.6044158935546875
+    ]
+   },
+   "margin_min_over_max_abs_diff": 0.00026600051177619126,
+   "cproj_reading": "transposed"
+  }
+ ]
+}

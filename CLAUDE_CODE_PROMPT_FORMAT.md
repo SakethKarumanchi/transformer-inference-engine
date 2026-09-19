@@ -13,9 +13,7 @@ Section delimiters are == CAPS == — never markdown headers, never rules.
 
 Fixed section order:
 
-  == PREDICTION (COMMIT THIS FIRST, BEFORE ANY CODE) == — the operator's prediction verbatim.
-    First instruction of the session is to write it into MEASUREMENTS.md and commit. Never
-    edited, improved, or authored by the agent. Omitted only for stages exempt under RULE 3.
+  == PREDICTION (COMMIT THIS FIRST, BEFORE ANY CODE) == — the stage's prediction, verbatim. First instruction of the session is to write it into MEASUREMENTS.md and commit it alone. Never edited, improved, corrected, commented on, or authored by the agent. Sealed after that commit — not consulted again until the Gap section. Omitted only for stages exempt under RULE 3.
 
   == AUTHORITATIVE CONTRACT (treat as fixed; verify, do not re-derive) == — verbatim hardware
     figures from HARDWARE.md, verbatim measurement rules from BENCHMARK_PROTOCOL.md, verbatim
@@ -50,7 +48,7 @@ build it, and STATE which you chose and why in your final report."
   - The primary measurement device never changes.
   - No sm_80+ intrinsics: no cp.async, no ldmatrix, no mma. Device is Turing sm_75.
   - A run with std dev above 5% of median is INVALID — report it, do not average it away.
-  - The agent never writes or revises a prediction.
+  - The agent never writes or revises a prediction, and never consults it between committing it and writing the Gap section.
 
 == WORKED EXAMPLE — Stage 9 (recon-then-build, no plan gate) ==
 
@@ -67,12 +65,12 @@ the benchmark harness beyond registration. Recon the live repo first, then build
 
 == PREDICTION (COMMIT THIS FIRST, BEFORE ANY CODE) ==
 
-The operator's prediction for Stage 9, verbatim:
+The prediction for Stage 9, verbatim:
 
-  Prefill attention speedup: [operator's number]
-  Peak memory at sequence length [L]: [operator's number]
-  Reasoning: [operator's reasoning, verbatim, including errors]
-  Falsified if: [operator's falsification condition]
+  Prefill attention speedup: [number]
+  Peak memory at sequence length [L]: [number]
+  Reasoning: [reasoning, verbatim, including errors]
+  Falsified if: [falsification condition]
 
 First action: write this block into the Stage 9 entry of MEASUREMENTS.md under "#### Prediction",
 commit it alone with the message "stage 9: prediction committed", then begin recon. Do not edit,

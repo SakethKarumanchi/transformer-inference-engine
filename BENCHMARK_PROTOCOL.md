@@ -16,7 +16,7 @@ A single "tokens per second" figure hides this and is the most common way these 
 
 ## 2. Timing method
 
-- **CPU:** `clock_gettime(CLOCK_MONOTONIC)`. Never wall clock.
+- **CPU:** the platform's monotonic counter. On this machine that is `QueryPerformanceCounter`: `clock_gettime(CLOCK_MONOTONIC)` is the POSIX equivalent and is not available under MSVC, and every results file from Stage 0 onward records `QueryPerformanceCounter`, as does `bench/microbench/bench_common.h`. Never wall clock.
 - **GPU:** CUDA events around the region, explicit device synchronize before reading. Kernel launches are asynchronous; timing without synchronization measures launch overhead, not execution.
 - Timing brackets computation only. Weight loading, tokenization, and startup excluded and reported separately.
 
