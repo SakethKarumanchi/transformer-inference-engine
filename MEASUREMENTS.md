@@ -615,7 +615,387 @@ The sharper lesson came from the tokenizer, and it is about what a reference is 
 
 ## Stage 2 — Naive C forward pass (baseline)
 *Predict the baseline itself from operation counts and measured machine throughput, before running it.*
-**Status:** not started
+**Status:** COMPLETE, 2026-09-19. Offline gate green (clean build, 20/20 tests). Seven timed configurations, 25 warmup and 30 samples each; **five VALID, two INVALID and named**. Correctness: the greedy token sequence matches the reference exactly and the divergence is measured and reported; **no tolerance was adopted and D2 remains Stage 3's**.
+
+#### Prediction  (written 2026-09-18, before implementation)
+
+**What is predicted.** Prefill latency in milliseconds for one forward pass over a prompt of L tokens, and decode latency in milliseconds per generated token at a context length c, with the timing bracket excluding weight loading and tokenization per `BENCHMARK_PROTOCOL.md` §2. There is no KV cache at this stage, so a decode step re-runs the full forward pass over the whole context and its cost is expected to grow with c.
+
+**Assumptions, stated before measurement.**
+
+1. The matmul uses the textbook `ijk` loop order with a dot-product inner loop. Loop interchange is itself a cache optimization and belongs to Stage 5.
+2. The language-model head is computed at every position during prefill, and only at the last position during a decode step.
+3. Scalar code throughout; the compiler does not auto-vectorize the matmul inner loop.
+
+**Inputs and their sources.** Architecture values `n_embd` 768, `n_head` 12, `n_layer` 12, `n_ctx` 1024, `vocab_size` 50257, and the parameter count 124,439,808, from the Stage 1 `MEASUREMENTS.md` entry, which confirmed them against the config shipped with the weights. Measured scalar FP32 ceiling 8.565 GFLOP/s, measured L3-resident bandwidth 70.81 GB/s, cache capacities 32 KiB L1d / 256 KiB L2 / 8 MiB L3 with an effective single-thread edge at 4 MiB, and 64 B cache lines, all from `HARDWARE.md` §2, Stage 0b reference run 2.
+
+**Figures deliberately excluded, with reasons.** The measured vectorised AVX2 peak of 48.411 GFLOP/s: this stage writes scalar code, and using the vectorised ceiling would also pre-empt Stage 6's entire framing (`PERSISTENT.md` §8, W8). The single-channel theoretical ceiling of 23.464 GB/s: it is derived from part numbers rather than measured, and a theoretical peak may not enter a prediction (`PERSISTENT.md` §8, W7). Measured CPU DRAM bandwidth: the `HARDWARE.md` §2 field is empty and Stage 0b left it empty with a better-evidenced reason (`PERSISTENT.md` §8, W1). The measured achievable GPU bandwidth of 170.882 GB/s and every cuBLAS throughput figure: both are GPU denominators and this is a CPU stage (`PERSISTENT.md` §8, W9). The 2496 MHz clock: `HARDWARE.md` §5.3 records it as a static nominal read rather than a live frequency. The 4.4 percent noise floor: it governs speedup claims and this stage claims none.
+
+**Parameter partition, verified against the recorded total.** Per layer the matmul weights are `c_attn` 768×2304 = 1,769,472, `attn.c_proj` 768×768 = 589,824, `mlp.c_fc` 768×3072 = 2,359,296 and `mlp.c_proj` 3072×768 = 2,359,296, totalling 7,077,888. Adding the four biases (2304 + 768 + 3072 + 768 = 6,912) and the two layernorms (4 × 768 = 3,072) gives 7,087,872 per layer, and 85,054,464 across twelve layers. The top level contributes `wte` 38,597,376, `wpe` 786,432 and `ln_f` 1,536, totalling 39,385,344. The sum is 124,439,808, which equals the parameter count recorded in the Stage 1 entry exactly. The partition is therefore confirmed rather than assumed.
+
+Matmul weight elements are 84,934,656 in the layers plus 38,597,376 in the tied head, totalling 123,532,032. The head is added explicitly: because it is tied, `wte` appears once in the parameter count but is used twice per forward pass, so a FLOP count built from the parameter count alone would undercount it.
+
+**FLOPs per token.** Layers: 2 × 84,934,656 = 169,869,312. Head: 2 × 38,597,376 = 77,194,752. Total 247,064,064.
+
+Attention adds, per token at context c, 2 × (12 heads × 64 head_dim × c) for the score matmul and the same again for the weighted sum of values, giving 3,072·c per layer and **36,864·c across twelve layers**. At c = 128 that is 4,718,592, or 1.9 percent of the weight matmuls; it is carried in full below but is not the decisive term at these lengths.
+
+The elementwise work adds 12 × 3072 = 36,864 `gelu_new` tanh evaluations and 144·c softmax exponentials per token. At a scalar transcendental cost of order tens of nanoseconds this lands near 1 percent, and it is the weakest-sourced component of this prediction.
+
+**Why prefill is not compute-bound here.** With `i` as the outermost loop, the whole weight matrix is re-walked for every token. `mlp.c_fc` at 9,437,184 bytes exceeds the 8 MiB L3, and the head at 154,389,504 bytes exceeds it eighteen-fold, so nothing survives between tokens. The prefill weight reuse that makes prefill compute-bound in `BENCHMARK_PROTOCOL.md` §1 is discarded by this loop order. Recovering it is exactly what Stage 5 does.
+
+**Both routes evaluated, on the same unit — one full pass of the weight set for one token.** Memory route, as an optimistic bound: 4 × 123,532,032 = 494,128,128 bytes moved; no measured CPU DRAM figure exists and the theoretical one is barred, so the measured L3 bandwidth is used as a bound DRAM cannot beat, giving 494,128,128 / 70.81e9 = 6.98 ms. That is a floor, not an estimate. Compute route: 247,064,064 / 8.565e9 = 28.85 ms at full ceiling. The compute route binds, by a factor of four over an already-optimistic memory bound, so the prediction rests on the efficiency fraction.
+
+**Efficiency fraction.** f = 0.15 of the measured scalar ceiling, giving an effective 1.28475 GFLOP/s. Three reductions apply against a ceiling measured on a register-resident loop with eight independent FMA chains and no memory traffic: the single accumulator in the inner loop exposes the FMA dependency those eight chains existed to hide; there are two loads per FMA where the ceiling had none; and the strided access to the weight matrix touches a fresh 64-byte line for every 4 bytes used, amortised sixteen-fold only across the middle loop. The plausible range is 0.08 to 0.30. As corroboration only, a naive `ijk` matmul on modern x86 commonly lands between 1 and 2 GFLOP/s, which brackets 1.285.
+
+**Arithmetic for each configuration.** Prefill at L tokens is L × 247,064,064 for the weight matmuls plus 36,864 × L(L+1)/2 for attention. A decode step at context c runs the twelve layers over all c tokens (c × 169,869,312), attends over the same triangle (36,864 × c(c+1)/2), and computes the head once (77,194,752).
+
+| Configuration | FLOPs | Predicted |
+|---|---|---|
+| Prefill, L = 32 | 7,925,514,240 (7.926 GFLOP) | **6,169 ms** |
+| Prefill, L = 64 | 15,888,777,216 (15.889 GFLOP) | **12,367 ms** |
+| Decode step, c = 32 | 5,532,476,928 (5.532 GFLOP) | **4,306 ms per token** |
+| Decode step, c = 64 | 11,025,507,840 (11.026 GFLOP) | **8,582 ms per token** |
+| Decode step, c = 128 | 22,124,815,872 (22.125 GFLOP) | **17,221 ms per token** |
+
+**Decode-to-prefill ratio at length 64: 0.69.** The structural claim is that without a KV cache a decode step re-runs the full forward pass over the entire context, so it costs the same order as a prefill of that length rather than one-Lth of it. It falls below 1.0 only because prefill computes the head at all L positions while a decode step computes it once. Decode cost per token is predicted to rise very nearly linearly in c — the predicted values double from c = 32 to 64 to 128 — and flattening that curve is what Stage 4 exists to do.
+
+**Falsified if:**
+
+- The measured result is more than 3× faster than predicted and the generated machine code proves the matmul inner loop was vectorized. That falsifies the scalar assumption and would pre-empt Stage 6, and it must be caught at build time rather than diagnosed afterwards.
+- The measured result is more than 3× slower than predicted, which would mean DRAM binds harder than the L3-derived floor permits and that the empty CPU DRAM bandwidth field is material at Stage 2 rather than at Stage 5.
+- The decode-to-prefill ratio at equal length comes out near 1/64 rather than near 0.69, or decode cost per token is flat in c. Either would mean a KV cache was built, which is out of scope.
+- A result within 2× in either direction does not falsify the reasoning; it indicates the efficiency fraction was imprecise, which is the expected outcome.
+
+#### Conditions
+
+| Condition | Value |
+|---|---|
+| Date, branch | 2026-09-19, branch `stage-2` cut from `main` at `ec0dd89` |
+| Prediction commit | `b33cb35`, "stage 2: prediction committed", `MEASUREMENTS.md` only, committed **before any implementation file existed** and not consulted again until the Gap section below |
+| Environment fingerprint | `machine_state.py verify`: **25 of 26 fields match, one differs** — `build_flags.BENCH_BUILD_TIMESTAMP`, stored `2026-09-18T06:56:02Z`, current `2026-09-19T09:38:41Z`. Every substantive field — driver 591.44, CUDA 13.1.80, compiler, all host and CUDA flags, power limit, Windows power plan — is unchanged, so `BENCHMARK_PROTOCOL.md` §4's condition is met and the comparison against prior stages is **not void**. **Stage 1 recorded `{"match": true, "differences": [], "fields_compared": 26}` against the same stored file after its own clean build.** Two stages ran one check on one file and got different answers; **this stage cannot establish why, and the cause is UNESTABLISHED.** Raised as `PERSISTENT.md` §8 **W12**, owned by Stage 3. The stored fingerprint file was NOT rewritten, regenerated or refreshed |
+| Clock lock | `nvidia-smi -lgc 1365,1365` applied from this elevated session, then verified: `verify-lock --mhz 1365` → `locked: true`, **10 of 10 samples at 1365 MHz**, `off_target_samples: []`, exit 0. `-lmc` not attempted (§2 Q11: device-capability limit). The lock is a thermal control for a CPU measurement as much as a clock control for a GPU one — this laptop's CPU and GPU share one thermal solution |
+| Compiler and flags | **Confirmed unchanged against `HARDWARE.md` §5.5.** MSVC 19.44.35229.0, toolset 14.44.35207, x64, VS 2022 Build Tools. Host flags `/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG`; CUDA `nvcc 13.1.80`, `-arch=sm_75`. Read from `build/generated/build_info.h`, which the build system writes from the same variables that reach every results file |
+| AC power | **On AC.** `PowerOnline = True`, not on battery. A run on battery is INVALID outright and none was taken |
+| Network | Wi-Fi ("Sahith5G 3"), `NetworkCostType = Unrestricted` — **not metered** |
+| Session elevation | **Elevated** (`IsInRole(Administrator)` true, user `MSI\saket`), so the clock lock was applied without an operator round trip |
+| Thread placement | Pinned to **logical CPU 2 of 8**, priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST), applied outside every timed bracket by `bench_pin_current_thread` and **recorded as applied rather than assumed**: `pinned=1`, `priority_raised=1`. No deviation from the requested placement was observed |
+| CPU timer | `QueryPerformanceCounter`, monotonic. Never wall clock |
+| Reference oracle environment | The repository `.venv` — Python 3.14.2, torch 2.14.0+cu130, numpy 2.5.3. **CPU only**, `torch.set_num_threads(1)` applied and verified as taken (`torch.get_num_threads()` → 1). Recorded as conditions because thread count changes the reduction order and therefore the divergence figures Stage 3 inherits |
+| Oracle weight-reading branch | **The second branch.** `import safetensors` **FAILS** in `.venv` (it lives only in `.venv-oracle`, which has no torch), and nothing was installed into either frozen environment. The oracle therefore reads the file with the standard library and numpy — 8-byte little-endian length prefix, JSON header, `numpy.frombuffer` on a fresh `bytes` read at the absolute file offset — and asserts its own parse against `src/gpt2_tensor_inventory.json` for **all 160 tensors** on name, dtype, shape, absolute file offset and byte length before using any of them. That cross-check is trustworthy rather than circular because the C loader that produced the inventory was proven byte-exact against the real safetensors library in Stage 1 |
+| Ordering of correctness and timing | The correctness comparison ran **BEFORE** the timed runs and had exited before the first timed bracket. It holds the full weight set in numpy and again in torch, over a gigabyte resident on a machine with a single 8 GiB DIMM, and `BENCHMARK_PROTOCOL.md` §3 makes a run with another workload present INVALID. The oracle was **not running during any timed bracket** |
+| CPU frequency telemetry | The committed `CpuTelemetrySampler` (`bench/machine_state.py`) was **reused** with the Stage 0b configuration: interval 0.02 s, exclusion set logical CPUs 0 and 2, resulting mask `0xf0` (logical CPUs 4–7, clear of CPU 2 where the measured thread runs and of its SMT sibling CPU 3), sampling from a separate process so no probe can land inside a timed bracket. Its per-probe cost and duty cycle were proven and recorded in Stage 0b, so this is reuse of a proven instrument, not the introduction of a new one |
+
+**Process set, enumerated before the first timed run, named rather than summarised.**
+
+*Holding a GPU context* (`nvidia-smi --query-compute-apps` and the process table, 16 entries): `dwm.exe`, `explorer.exe`, `ShellHost.exe`, `StartMenuExperienceHost.exe`, `SearchHost.exe`, `TextInputHost.exe`, `CrossDeviceResume.exe`, `LockApp.exe`, `ApplicationFrameHost.exe`, `SystemSettings.exe`, `PhoneExperienceHost.exe`, `OmApSvcBroker.exe` (MSI NBFoundation Service), `logioptionsplus_agent.exe`, `msedgewebview2.exe`, and **two processes of this session's own editor (`claude.exe`)**. GPU memory in use 486 MiB of 4096 MiB, utilisation 1%, temperature 49–55 °C, no throttle reason active (`sw_thermal_slowdown` Not Active, `hw_thermal_slowdown` Not Active).
+
+*Significant CPU consumers* (accumulated CPU seconds at enumeration time): `MsMpEng` (Windows Defender real-time scanning) 2509 s, `System` 1848 s, `esrv_svc` (Intel Energy Server service) 798 s, `svchost` (pid 4824) 316 s, `WmiPrvSE` 274 s, **`claude.exe` ×4 (this session: 258 / 193 / 161 / 106 s)**, `dwm` 155 s, `logioptionsplus_agent` 122 s, `explorer` 57 s, `csrss` 50 s, `nvcontainer` 46 s, `SearchIndexer` 40 s, `conhost` 39 s, three further `svchost` instances 24–30 s, `SDXHelper` 22 s. 231 processes resident.
+
+**How the set differs from Stage 0's, which is the set the 4.4% noise floor was measured against.**
+
+- **Riot Vanguard (`vgc`, `vgtray`) — ABSENT.** Resident throughout Stage 0; absent in Stage 0b and absent here.
+- **Nahimic — ABSENT.** Resident in Stage 0; closed in Stage 0b, absent here.
+- **Intel DSA (`DSAService`, `DSATray`, `DSAUpdateService`) — ABSENT.** Present at this session's checkpoint and **closed by the operator before the first timed run**; verified absent by name afterwards. `esrv_svc`, the Intel Energy Server service, **remained running** and is recorded as present rather than assumed gone.
+- **Logitech Options+ — PRESENT.** The operator attempted to close it; it is running under a new pid (2884, against 14976 at the checkpoint), so it respawned. **Recorded as present, not as closed** — the same handling Stage 0b gave it.
+- **`msedgewebview2.exe` ×6 — PRESENT**, uncloseable, and equally resident during Stage 0, so a shared condition rather than a difference.
+- **MSI service stack (`OmApSvcBroker`, `MSIService`) — PRESENT**, left running by the standing decision that stopping it risks silently changing the clock regime (D8, §2 Q9) with no way to detect it.
+- **Windows Defender — PRESENT**, not excluded or modified.
+- **NEW, and not a condition any prior stage had: this session's own editor, `claude.exe` ×9 processes**, four of them significant CPU consumers. Stage 0 and Stage 0b did not carry it.
+
+Net: the set is **lighter than Stage 0's** on the two heaviest items (Vanguard and Nahimic both absent) and **carries one addition Stage 0 did not** (this session's editor). **The 4.4% noise floor is NOT re-derived, adjusted or restated here** — this stage did not re-run the full microbenchmark suite and cannot re-derive it (`PERSISTENT.md` §8 W5, whose Status is unchanged). It is recorded so that a stage which does re-derive it knows what this session ran under.
+
+#### Architecture and config values, each with the artifact it came from
+
+No architecture value in this entry came from `TECHNICAL_SPEC.md` §1, which warns against trusting its own table, and none was taken from the stage prompt or from memory. `src/model.c` reads every one of them at load time; nothing is compiled in except the tensor names.
+
+| Value | Read | Artifact |
+|---|---|---|
+| `n_layer` | 12 | `models/gpt2/config.json` |
+| `n_head` | 12 | `models/gpt2/config.json` |
+| `n_embd` | 768 | `models/gpt2/config.json` |
+| `head_dim` | 64 | derived as `n_embd / n_head`, and the division is checked to be exact at load |
+| `n_ctx` | 1024 | `models/gpt2/config.json` |
+| `vocab_size` | 50257 | `models/gpt2/config.json`, and **independently confirmed** by `tok_vocab_size()` reading `tokenizer.json` — asserted equal in `tests/test_model.c` and in the driver |
+| `layer_norm_epsilon` | 1e-05 | `models/gpt2/config.json` |
+| `activation_function` | `gelu_new` | `models/gpt2/config.json`. The loader **fails** if the config names anything else rather than substituting a nonlinearity |
+| positional scheme | learned absolute | `wpe.weight` [1024, 768] exists in the file and no rotary or sinusoidal tensor does; `n_positions` = `n_ctx` = 1024 |
+| every tensor's name, dtype, shape, absolute file offset, byte length | 160 tensors | `src/gpt2_tensor_inventory.json`, **cross-checked against the weight file's own header** through `st_find` before any byte is read — a disagreement on any of the five fails the load with `MODEL_ERR_INVENTORY` |
+| the inventory's own `config_values_used` | `n_embd` 768, `n_layer` 12, `n_head` 12, `vocab_size` 50257 | asserted equal to the config being read now, so the two artifacts cannot describe different models unnoticed |
+
+**Nothing disagreed.** Every value matches the table the Stage 1 entry recorded under "Config fields recorded for Stage 2", and the five architecture values match the Q3 closure.
+
+#### Orientation reconciliation, as implemented
+
+The reconciliation happens **at load time, in `src/model.c`, explicitly, and is recorded per tensor** in `model_tensor_record` — not as transposes scattered through the arithmetic. `gpt2_tool --records` prints the record; it is what the table below is taken from.
+
+| Tensor (count) | Stored shape | Inventory orientation | What the loader did | What the forward pass consumes |
+|---|---|---|---|---|
+| `wte.weight` (1) | 50257 × 768 | `axis0_index_axis1_feature` | nothing | rows are tokens for the embedding lookup, and the **same storage** enters the tied head through the transposed-B form |
+| `wpe.weight` (1) | 1024 × 768 | `axis0_index_axis1_feature` | nothing | rows are positions |
+| `h.*.attn.c_attn.weight` (12) | 768 × 2304 | `axis0_input_axis1_output` | nothing | `[input, output]`, which is exactly `gemm_f32`'s B layout |
+| `h.*.mlp.c_fc.weight` (12) | 768 × 3072 | `axis0_input_axis1_output` | nothing | `[input, output]` |
+| `h.*.mlp.c_proj.weight` (12) | 3072 × 768 | `axis0_input_axis1_output` | nothing | `[input, output]` |
+| `h.*.attn.c_proj.weight` (12) | 768 × 768 | **`unresolved_by_shape`** | **nothing, under the selected reading** — the alternative reading transposes the bytes once, at load | `[input, output]` |
+
+**The square tensors were settled by measurement, not by inheriting Stage 1's inference.** Both readings are runnable (`model_cproj_reading`, `gpt2_tool --cproj as-stored|transposed`) and both were run against the same oracle at the same prompt:
+
+| Reading | Max absolute divergence from the oracle | Top-1 agreement | Top-5 set agreement |
+|---|---|---|---|
+| **as-stored** `[input, output]` | **3.128e-04** | **8 of 8 positions** | **8 of 8** |
+| transposed `[output, input]` | **121.468** | 2 of 8 | **0 of 8** |
+
+Five orders of magnitude apart, and the transposed reading's *mean* absolute divergence (71.6) is larger than the entire dynamic range of a correct logit vector. `tests/test_model.c` exercises both readings and asserts they produce different logits, so the choice is decidable by observation; `tests/test_reference_impl.py` asserts the transposed reading diverges further. **The reading was selected by observation.**
+
+**The limit on what the logit comparison establishes for orientation, stated plainly.** A reference that applied the same orientation decision as the C loader would agree with a wrong mapping. The oracle derives its own layer shapes from the config and from the shapes the file declares, and asserts each rectangular weight against the bias length that pins it — but for the square tensors it takes the reading as a parameter, exactly as the engine does. **So for orientation the discriminator is the both-readings comparison plus readable English text, not the logit match alone.** The generated text below is the part of that evidence which does not share an author with both implementations.
+
+#### The language-model head is tied, and how that was verified
+
+No tensor in the file is named `lm_head` and exactly one matrix carries the vocabulary size against the embedding width, so the head is `wte.weight` itself. **Verified by identity of storage, not by comparing values**: `model_head_weight(m) == model_token_embedding(m)` — the same pointer — asserted in `tests/test_model.c`. A transposed copy would pass a value comparison and fail this one. The oracle is checked the same way on its own side: `model.head.data_ptr() == model.wte.data_ptr()`.
+
+Because the head is tied, `wte` is [vocab, n_embd] = `[output, input]`, which is the transpose of the layout the weight matmuls use. It is consumed through `gemm_naive_bt` rather than copied into a transposed buffer, because **tying the head means using that storage**; a transposed copy would also cost 154 MB of additional resident memory.
+
+#### The causal mask was REGENERATED, not loaded
+
+**Determination: regenerated.** The twelve `h.*.attn.bias` tensors are never read and no mask is materialized at all. Causality is the loop bound `j <= t` plus an explicit zero above the diagonal.
+
+Reasons: those tensors are 50,331,648 bytes, 9.2% of the data segment, to express a triangular predicate that costs two integer comparisons per element; Stage 1 verified their contents are exactly lower-triangular 0/1 and recommended regeneration; and reading them would add 50 MB to both the load time and the resident set of a process that already holds 498 MB of parameters on a machine with one 8 GiB DIMM. **The equivalence is a test, not a comment**: `tests/test_model.c` changes the token at the last position and asserts that **no logit at any earlier position moves, bit for bit**, over 6 positions × 50,257 vocabulary entries — and separately asserts that the logits at the changed position *do* move, so the check cannot pass vacuously.
+
+#### The matmul interface, the loop order, and the confirmation that it is scalar
+
+**Interface** (`src/gemm/gemm.h`), which Stages 5 and 6 substitute against:
+
+```c
+void gemm_naive   (int M, int N, int K, const float *A, int lda,
+                   const float *B,  int ldb,  float *C, int ldc);   /* B  is K x N */
+void gemm_naive_bt(int M, int N, int K, const float *A, int lda,
+                   const float *Bt, int ldbt, float *C, int ldc);   /* Bt is N x K */
+
+typedef void (*gemm_fn)(int, int, int, const float *, int, const float *, int, float *, int);
+typedef void (*gemm_bt_fn)(int, int, int, const float *, int, const float *, int, float *, int);
+typedef struct { const char *name; gemm_fn mul; gemm_bt_fn mul_bt; } gemm_impl;
+extern const gemm_impl gemm_impl_naive;
+```
+
+Row-major throughout, explicit leading dimensions so a caller may pass a sub-block of a wider buffer — attention does exactly that, one head at a time out of a `[tokens, n_embd]` activation matrix. `C` is written, not accumulated. No bias, no activation, no transpose of `A`: bias and the elementwise work stay in the forward pass, so what later stages measure is a matmul and not a fused kernel that changed shape between stages. A later implementation is substituted through `model_set_gemm`, which touches no arithmetic in the forward pass. **Two operations rather than one because the weight file forces both**: every 2-D weight is stored `[input, output]`, which is `gemm_f32`'s B layout, while the tied head is `[output, input]` and must be used in that storage.
+
+**Loop order used: `ijk`** — `i` outermost, `j` middle, `k` innermost, dot product in the inner loop, **one accumulator**. Interchange to `ikj` is a cache optimization and belongs to Stage 5's measured gain; several accumulators would hide the dependency chain and belong to no stage that has claimed them. Neither was taken.
+
+**Scalar codegen confirmed from the generated code, before any timed run.** The build emits an assembly listing for the `gemm_naive` translation unit compiled with **exactly the frozen flags** (`build/asm/gemm_naive.asm`, a `/FAs` compile beside the ordinary object — the same precedent as the two Stage 0 tests that read emitted PTX rather than trusting a comment). `tests/test_gemm_naive.c` reads it and asserts:
+
+- **0 occurrences of `ymm`** anywhere in the listing;
+- **0 occurrences of packed floating-point arithmetic** — `vfmadd132/213/231ps`, `vmulps`, `vaddps`, `vsubps`, `mulps`, `addps`, `vdpps`, `vhaddps`;
+- **20 occurrences of scalar arithmetic** (10 × `vmulss`, 10 × `vaddss`), so the loop was compiled rather than eliminated.
+
+**No flag was changed and no de-vectorizing pragma was needed** — MSVC did not vectorize the inner loop under `/O2 /arch:AVX2`, which is consistent with `/fp:precise` forbidding the reassociation a vectorized reduction requires. Note also that **no FMA was contracted**: the multiply and the add are separate instructions, again consistent with `/fp:precise`.
+
+#### Inputs — PLACEHOLDERS, not the benchmark prompt set
+
+`PERSISTENT.md` §1 **D3 is open and owned by Stage 3**; this stage did not touch it and does not propose these strings as the prompt set. It needed inputs to time anything, so it committed `tests/fixtures/stage2_placeholder_prompts.tsv` — ordinary English prose, labelled PLACEHOLDER in the fixture header, in this entry, and as structured fields in both results files (`prompt_set_status` / `prompt_set_open_decision` / `prompt_set_work_item` / `prompt_set_source` in the bench file, and a nested `"prompt_set"` object in the correctness file). The Stage 1 round-trip corpus was **not** a candidate: those strings exist to break a tokenizer and are labelled test fixtures in their own header.
+
+The fixture's first row encodes to **180 tokens** with the Stage 1 tokenizer, and every configuration is a **prefix of that same token sequence**, truncated to the exact count it needs — so the token counts are exact rather than approximate. The consequence for the cross-stage waterfall is registered as **W11**, owned by Stage 3.
+
+#### Warmup, and the ambiguity in §4.2
+
+**25 warmup iterations, every configuration.** `BENCHMARK_PROTOCOL.md` §4.2 supports two readings — a workload-relative rule (raise warmup if stabilization takes longer than 5 iterations *of the workload being timed*) and a fixed adjusted value of 25 "used everywhere" since Stage 0. **The document is ambiguous on this point and 25 was chosen as the conservative reading**: extra warmup can only cost time, while shortening it can invalidate a measurement, and 25 preserves comparability of method with Stages 0 and 0b.
+
+§4.2-style arithmetic for **this** stage's workload, which is what a later stage needs to disambiguate the document: the single-iteration probe at the shortest configuration measured **8.920 s**. 25 × 8.920 s = **223 s**; even the protocol default of 5 × 8.920 s = **44.6 s**. Both exceed the 0.075 s stabilization figure by three orders of magnitude, so **the rule's condition is not met at all** — by the workload-relative reading, 5 would have sufficed here. 25 was used anyway, at a cost of roughly 3.7 minutes of warmup per configuration.
+
+#### Correctness — the divergence is MEASURED and REPORTED, and NO tolerance was adopted
+
+**No tolerance was adopted and none was written into `BENCHMARK_PROTOCOL.md` §5. D2 remains open and owned by Stage 3.** A threshold invented by this stage and then passed by its own author would be circular and would prove nothing. What gates acceptance here are the two requirements that carry no tolerance — **greedy-decoded token sequence equality against the reference**, and **readable English output** — plus the structural property checks below.
+
+Statistics computed in float32 on both sides over the **full logit vector at every position**, at two sequence lengths. Full structured record: `bench/results/stage2/stage2_correctness.json`.
+
+| Statistic | Prefill L = 8 | Prefill L = 16 |
+|---|---|---|
+| max absolute difference | **3.1281e-04** | **3.1281e-04** |
+| — at position, token id | position 0, token 23601 | position 0, token 23601 |
+| max relative difference | **8.6958e-06** | **8.6958e-06** |
+| — denominator | \|reference\| + 1e-6, elementwise | same |
+| — elements below that floor | **0** | **0** |
+| mean absolute difference | 6.4757e-05 | 5.5687e-05 |
+| median absolute difference | 4.5776e-05 | 4.5776e-05 |
+| RMS absolute difference | 9.1561e-05 | 7.6493e-05 |
+| absolute p50 / p90 / p99 / p99.9 / max | 4.578e-05 / 1.945e-04 / 2.518e-04 / 2.785e-04 / 3.128e-04 | 4.578e-05 / 1.068e-04 / 2.441e-04 / 2.708e-04 / 3.128e-04 |
+| relative p50 / p90 / p99 / p99.9 / max | 4.842e-07 / 4.934e-06 / 6.285e-06 / 6.967e-06 / 8.696e-06 | 4.307e-07 / 1.644e-06 / 6.026e-06 / 6.779e-06 / 8.696e-06 |
+| **top-1 agreement** | **8 of 8 positions** | **16 of 16 positions** |
+| **top-5 set agreement** | **8 of 8 positions** | **16 of 16 positions** |
+| reference top-1/top-2 margin, min / median / max | **0.03231** / 0.26849 / 5.45984 | **0.01438** / 0.45702 / 5.45984 |
+| **smallest margin ÷ largest divergence** | **103.3×** | **46.0×** |
+
+**The margin is the figure Stage 3 should set D2 from**, and it is the most useful thing this stage hands forward: it says how much divergence greedy decoding can absorb before a token flips. At L = 16 the tightest decision in the sequence had 0.0144 of headroom against a worst-case divergence of 0.00031 — a factor of **46**. It is also the figure that degrades with length: the minimum margin more than halved from L = 8 to L = 16 while the divergence did not move, so **a tolerance chosen at short length need not hold at long length**, which is why two lengths were measured.
+
+Tolerance-free checks, all passing:
+
+- **greedy token sequence matches the reference exactly** — engine `[464, 3139, 1748, 286, 4881, 318, 262, 3139, 286]`, reference identical, on the placeholder prompt with 3 generated tokens;
+- **attention weights sum to 1 along the attended axis** for every head, every position and every layer of a full forward pass — every row of 12 layers × 12 heads × the tested prefill length, the count asserted against that product, with the observed minimum and maximum row sum both within 1e-5 of 1;
+- **layernorm output has zero mean and unit variance per row** before the affine transform (mean within 1e-5 of 0, variance within 1e-4 of 1);
+- **causality** — changing the token at position *j* moves no logit at any position *i < j*, bit for bit; and the logits at *j* do move;
+- **prefill/decode self-consistency** — a decode step at context *t*+1 reproduces the prefill logits at position *t* **bit for bit**, at every context length tested;
+- **the head is tied**, verified as identity of storage;
+- **`tok_vocab_size()` equals the config's `vocab_size`** (50257 both sides);
+- **the weight reader agrees with the committed inventory on all 160 tensors** — name, dtype, shape, absolute file offset, byte length.
+
+Correctness tests ran at **reduced token counts, stated**: 4–7 tokens in `tests/test_model.c`, 8 and 16 in `tests/test_reference_impl.py`, 3 generated tokens for the greedy comparison. **The reduction applies to the correctness tests only; no timed configuration was shortened.**
+
+**What agreement between the engine and the oracle proves, and what it does not.** Both were written in one session from one reading of the architecture, so agreement is evidence that **the two implementations agree** — it is **not** evidence that either matches GPT-2. The external discriminator available is readable English generated from published weights, and its resolution must be stated with it: it catches a transposed weight, an untied head, a broken causal mask and a wrong positional scheme, because any of those produces garbage; it does **not** catch a wrong layernorm epsilon, a plain `gelu` substituted for `gelu_new`, or a mildly wrong attention scale. What *is* externally validated independently of this stage is the **input** side: the Stage 1 tokenizer was verified against the real `tokenizers` library across 48 records and 410 ids, and the Stage 1 loader is byte-exact against real safetensors across 160 of 160 tensors.
+
+#### Generated text — the external discriminator, untimed
+
+Both samples are greedy, 30 generated tokens, run **outside every timed bracket** and not counted against the time budget. Reported in full, unedited, including the repetition.
+
+**Prompt A — "The capital city of France is"** (6 prompt tokens, 30 generated):
+
+> The capital city of France is the capital of the French Republic, and the capital of the French Republic is the capital of the French Republic.
+>
+> The French Republic is the largest
+
+**Prompt B — "In the years before the railway arrived, the valley was reached only by a single road, and the people who lived there"** (24 prompt tokens, 30 generated):
+
+> In the years before the railway arrived, the valley was reached only by a single road, and the people who lived there were not very good. The people who lived there were not very good. The people who lived there were not very good. The people who lived there
+
+Both are readable, grammatical English with correct syntax, correct agreement, and a coherent continuation of the prompt's topic — which is what this check is for. Both then fall into a repetition loop, which is **ordinary behaviour for a 124M-parameter model under greedy decoding with no sampling, no repetition penalty and no beam search**, and is reported rather than tuned away. Prompt A additionally produces a correct paragraph break and capitalisation after the full stop. No prompt was selected to flatter the output; both come from the committed placeholder fixture.
+
+
+#### Measurement
+
+One run, 2026-09-19, results file `bench/results/stage2/stage2_forward.json` (stage id `stage-2`, 7 records, raw per-sample timings retained). Warmup **25** and **30 samples** for every configuration — the protocol's preferred count, not its minimum, and nothing was reduced. `QueryPerformanceCounter`, timing brackets computation only. Total wall time of the timed set: 3883.3 s.
+
+**Time budget, as a build-time determination.** One untimed iteration at the shortest configuration measured **8.920 s** at the checkpoint and **8.296 s** as the run's own probe — both real measurements of a single iteration, and the first is what the budget was decided from. The budget stated before the run was **25 minutes per configuration, 90 minutes total**. Every one of the seven configurations was projected to fit at 30 samples, **nothing was dropped and no warmup was shortened**; the actual total came in at 64.7 minutes. The scheduling projections themselves are not measurements and appear nowhere in this entry as latencies.
+
+**PREFILL** — the head is computed at every position; no KV cache.
+
+| Configuration | Samples | Median | Min | Max | Std dev (% of median) | Verdict |
+|---|---|---|---|---|---|---|
+| Prefill, L = 32 | 30 | 7765.285 ms | 7589.682 ms | 9743.632 ms | **7.031%** | **INVALID** |
+| Prefill, L = 64 | 30 | **15520.584 ms** | 15384.836 ms | 15911.225 ms | 0.840% | VALID |
+
+**DECODE** — one decode step, sampled independently at each context; the head is computed once; no KV cache. Prefill and decode are never combined into one figure.
+
+| Configuration | Samples | Median | Min | Max | Std dev (% of median) | Verdict |
+|---|---|---|---|---|---|---|
+| Decode step, c = 32 | 30 | **6561.243 ms** | 6500.116 ms | 6822.580 ms | 1.299% | VALID |
+| Decode step, c = 64 | 30 | **13193.109 ms** | 12997.858 ms | 13650.530 ms | 1.217% | VALID |
+| Decode step, c = 128 | 30 | **26842.550 ms** | 26373.518 ms | 31007.176 ms | 3.579% | VALID |
+
+**ISOLATED GEMM** — the naive matmul alone, reported as its own configuration with its own verdict and never folded into prefill or decode. One shape family (M = 32, K = 768) at two working-set sizes in different cache tiers; only N moves, so the two records differ in the size of the streamed operand and in nothing else.
+
+| Configuration | B operand | Samples | Median | Std dev | Throughput | Verdict |
+|---|---|---|---|---|---|---|
+| M=32 N=768 K=768 (`attn.c_proj` shape) | 2,359,296 B = **2.25 MiB**, inside the 8 MiB L3 | 30 | 24.056 ms | 1.317% | **1.5692 GFLOP/s** | VALID |
+| M=32 N=3072 K=768 (`mlp.c_fc` shape) | 9,437,184 B = **9.00 MiB**, exceeds the 8 MiB L3 | 30 | 124.149 ms | **8.212%** | 1.2162 GFLOP/s | **INVALID** |
+
+**INVALID configurations, named: prefill L = 32 (7.031%) and the isolated GEMM at N = 3072 (8.212%).** Both exceed the 5%-of-median limit and are reported as invalid. **Neither was retried, averaged away, or rescued by a robust statistic**, and no result below depends on either.
+
+**Derived throughput** `[derived]`, arithmetic shown. Operation counts are of the work the code actually performs, which includes the full T × T score matrix rather than only its causal triangle — the naive implementation computes the whole square and then discards the upper part, and counting only the triangle would flatter it. Per token: layer weight matmuls 2 × 84,934,656 = **169,869,312**; tied head 2 × 38,597,376 = **77,194,752**; total **247,064,064**. Attention as implemented: 4·T²·head_dim per head per layer × 12 × 12 = **36,864·T²**.
+
+| Configuration | FLOPs | Median | Achieved | % of the measured scalar ceiling (8.565 GFLOP/s) |
+|---|---|---|---|---|
+| Prefill, L = 64 | 64 × 247,064,064 + 36,864 × 64² = 15,963,095,040 | 15520.584 ms | **1.0285 GFLOP/s** | **12.01%** |
+| Decode, c = 32 | 32 × 169,869,312 + 36,864 × 32² + 77,194,752 = 5,550,761,472 | 6561.243 ms | 0.8460 GFLOP/s | 9.88% |
+| Decode, c = 64 | 64 × 169,869,312 + 36,864 × 64² + 77,194,752 = 11,099,825,664 | 13193.109 ms | 0.8413 GFLOP/s | 9.82% |
+| Decode, c = 128 | 128 × 169,869,312 + 36,864 × 128² + 77,194,752 = 22,424,446,464 | 26842.550 ms | 0.8354 GFLOP/s | 9.75% |
+| Isolated GEMM, N = 768 | 2 × 32 × 768 × 768 = 37,748,736 | 24.056 ms | **1.5692 GFLOP/s** | **18.32%** |
+| Isolated GEMM, N = 3072 | 2 × 32 × 768 × 3072 = 150,994,944 | 124.149 ms | 1.2162 GFLOP/s | 14.20% — **INVALID, not a claim** |
+
+Prefill at L = 32 is excluded from this table: its run is INVALID and no throughput is derived from it.
+
+**Structural results.**
+
+- **Decode cost per token is very nearly linear in context**, as it must be without a KV cache: 6.561 s at c = 32, 13.193 s at c = 64 (**2.011×**), 26.843 s at c = 128 (**2.035×**). Flattening that curve is what Stage 4 exists to do, and this is the curve it will be measured against.
+- **Decode-to-prefill ratio at equal length 64: 0.850** (13193.109 / 15520.584). A decode step costs the same order as a prefill over the same context rather than one-64th of it, because without a cache it re-runs the entire forward pass; it sits below 1.0 because prefill computes the head at all 64 positions and a decode step computes it once.
+- **No speedup is claimed by this stage**, so the 4.4% noise floor governs nothing here and was neither re-derived nor restated (`PERSISTENT.md` §8 W5, Status unchanged).
+- **No headline number is quoted.** `BENCHMARK_PROTOCOL.md` §7 defines the decode headline against `HARDWARE.md` §1 (the GPU) and the prefill headline against cuBLAS (also GPU); neither `PROJECT.md` §6 headline is answerable by a CPU stage. No percent-of-DRAM-bandwidth figure is quoted for CPU decode (W1), no percent-of-cuBLAS figure for CPU prefill (W9), and the derived single-channel figure of 23.464 GB/s is used as a denominator nowhere (W7). The ceiling used throughout is the measured **scalar** 8.565 GFLOP/s, not the measured vectorised 48.411 (W8).
+
+**Within-run drift, DIAGNOSTIC.** The 5%-of-median rule tests dispersion, not direction: a run can pass it while drifting. Median of the second half of the samples against the median of the first, signed, per configuration. These figures characterise the distribution; they never replace a reported median and they never convert an INVALID run into a valid one.
+
+| Configuration | First half | Second half | Drift | IQR as % of median | Robust outliers (1.5 × IQR) | Share of squared deviation carried by them |
+|---|---|---|---|---|---|---|
+| Prefill L = 32 | 8313.175 ms | 7683.354 ms | **−7.576%** | 8.214% | 2 (9597, 9744 ms) | 67.0% |
+| Prefill L = 64 | 15520.379 ms | 15520.789 ms | **+0.003%** | 0.841% | 2 (15871, 15911 ms) | 54.0% |
+| Decode c = 32 | 6547.087 ms | 6618.839 ms | +1.096% | 1.541% | 1 (6823 ms) | 27.4% |
+| Decode c = 64 | 13119.426 ms | 13225.087 ms | +0.805% | 1.953% | 0 | 0.0% |
+| Decode c = 128 | 26765.542 ms | 26878.973 ms | +0.424% | 1.648% | 2 (29879, 31007 ms) | 92.3% |
+| GEMM N = 768 | 23.962 ms | 24.346 ms | +1.601% | 2.348% | 0 | 0.0% |
+| GEMM N = 3072 | 123.791 ms | 124.632 ms | +0.679% | 5.410% | 5 (141, 141, 143, 150, 167 ms) | 93.3% |
+
+**What the drift figures show, and what they do not.** Over a 64.7-minute sustained single-core run, **no configuration's second half is systematically slower than its first by more than 1.7%**, and the four longest configurations sit between +0.003% and +1.10%. The one large drift is **negative** — prefill L = 32's first half was 7.6% *slower* than its second, which is the opposite sign from a thermal effect and is carried by two outliers of 9.6 and 9.7 s against a 7.77 s median that between them account for 67% of the squared deviation. That configuration is INVALID on the dispersion rule independently. **An absence of positive drift is evidence and is reported as such**, but it is evidence from timings alone: this machine has no live CPU package temperature source (`HARDWARE.md` §5.3), so a thermal contribution is **not measured** here, only bounded by what the timings would have shown.
+
+**CPU frequency, recorded as a run condition.** The committed `CpuTelemetrySampler` ran alongside the whole timed set with the Stage 0b configuration — interval 0.02 s, affinity mask `0xf0` (logical CPUs 4–7), clear of logical CPU 2 where the measured thread ran and of its SMT sibling CPU 3, sampling from a separate process so no probe could land inside a timed bracket. **122,428 samples over 3883.3 s**, per-probe cost **49.6 µs**, sampler duty cycle **0.469% of one core** (Stage 0b measured 0.355% at the same interval; the figure is recorded as observed, not as inherited). Trace: `bench/results/stage2/stage2_forward_cpu_frequency_trace.json`, 18,025,343 bytes, raw samples retained.
+
+| Source | n | Min | Median | Max |
+|---|---|---|---|---|
+| `\Processor Information(_Total)\% Processor Performance` | 122,428 | 115.97 | **165.92** | 228.08 |
+| `\Processor Information(_Total)\% Performance Limit` | 122,428 | 100.0 | 100.0 | 100.0 |
+| `\Processor Information(_Total)\Processor Frequency` | 122,428 | 2496.0 | 2496.0 | 2496.0 |
+
+The live source moved across a range of **116% to 228% of nominal** during the session while the static nominal read stayed at 2496 MHz throughout — which is exactly why Stage 0b classified the third source as static and kept the first. `% Performance Limit` was **100.0 on every one of the 122,428 samples**, so no platform-imposed frequency ceiling was asserted at any point in the run. **What this does not establish:** the counter is a `_Total` across all logical processors, not the measured thread's own frequency, and no package temperature was available, so it bounds the session rather than attributing anything to a configuration.
+
+#### The W3 observation, recorded without changing the item
+
+`PERSISTENT.md` §8 **W3** predicts that decode-shaped timings will be INVALID roughly half the time under a 30-sample construction, from Stage 0's M = 1 GEMM configurations whose medians were **30–90 µs** with spike-carried variance. This stage produced the project's first decode timing, and it falls **far outside that band**: the decode-step medians are **6561, 13193 and 26843 ms** — five orders of magnitude above 30–90 µs — with dispersion of **1.299%, 1.217% and 3.579%** of median, all VALID.
+
+Dispersion character, by the robust-outlier count against the interquartile range: c = 32 is **mixed** (IQR 1.541% of median, one outlier carrying 27.4% of squared deviation), c = 64 is **broad** (IQR 1.953%, zero outliers), c = 128 is **spike-carried** (IQR 1.648%, two outliers carrying 92.3%). W3's mechanism — a tight baseline punctured by single interruption events — is visible at c = 128 and absent at c = 64.
+
+**Nothing about W3 is changed.** Its band was derived for microsecond-scale M = 1 GEMM configurations and this stage's decode workload is a whole forward pass at second scale; the two are not the same measurement, and a decode step timed after Stage 4 adds the KV cache will be a third thing again. Recorded so that Stage 3 and Stage 4 have this stage's numbers when they revisit it.
+
+#### Gap — predicted against measured
+
+The prediction was committed alone in `b33cb35` before any implementation file existed and was **not consulted again until this section**. It influenced no configuration, no sample count, no warmup value, no implementation choice and no decision to investigate anything.
+
+| Configuration | Predicted | Measured | Measured / predicted |
+|---|---|---|---|
+| Prefill, L = 32 | 6,169 ms | 7765.285 ms **(INVALID)** | 1.259× |
+| Prefill, L = 64 | 12,367 ms | **15520.584 ms** | **1.255×** |
+| Decode step, c = 32 | 4,306 ms | **6561.243 ms** | **1.524×** |
+| Decode step, c = 64 | 8,582 ms | **13193.109 ms** | **1.537×** |
+| Decode step, c = 128 | 17,221 ms | **26842.550 ms** | **1.559×** |
+| Decode-to-prefill ratio at length 64 | 0.69 | **0.850** | 1.232× |
+
+**Every configuration landed within 2× of the prediction, all on the slow side, and the prediction's own criterion for that outcome is that the efficiency fraction was imprecise rather than the reasoning wrong.** The three falsification conditions it stated are all unmet:
+
+- *More than 3× faster with vectorized machine code* — not met, in either half. The measurements are slower, not faster, and the generated code was proven scalar at build time: zero `ymm` registers and zero packed instructions in the emitted listing, checked by a unit test rather than diagnosed afterwards.
+- *More than 3× slower* — not met; the worst case is 1.56×. The empty measured CPU DRAM bandwidth field is therefore **not** shown to be material at Stage 2.
+- *Decode-to-prefill ratio near 1/64, or decode cost flat in c* — not met. The ratio is 0.850 and decode cost doubles with each doubling of context (2.011× and 2.035×). **No KV cache was built**, and the measurement confirms the structural claim the prediction rested on.
+
+**The mechanism, quantified.** The prediction's single free parameter was the efficiency fraction f, taken as 0.15 of the measured scalar ceiling with a stated plausible range of 0.08 to 0.30. Measured:
+
+| Workload | Achieved | f, as a fraction of the measured scalar ceiling |
+|---|---|---|
+| Prefill, L = 64 | 1.0285 GFLOP/s | **0.120** |
+| Decode, c = 32 / 64 / 128 | 0.8460 / 0.8413 / 0.8354 GFLOP/s | **0.099 / 0.098 / 0.098** |
+| Isolated GEMM, B inside L3 | 1.5692 GFLOP/s | **0.183** |
+
+Both workloads land inside the stated range, and the whole of the gap is accounted for by f being 0.120 rather than 0.150 at prefill and 0.098 rather than 0.150 at decode: 0.150 / 0.120 = 1.25, which is the measured prefill ratio of 1.255 to three digits, and 0.150 / 0.098 = 1.53, which is the measured decode ratio. **The prediction's structure was right and its single estimated constant was 25% optimistic at prefill and 53% optimistic at decode.**
+
+**The one structural thing the prediction did not anticipate is that f is not one number.** It assumed a single fraction for both workloads; the measurement shows prefill running at 0.120 and decode at 0.098, a 22% difference that is stable across all three contexts. The difference has a candidate mechanism that this stage can state but cannot prove: prefill computes the tied head at every position, and the head is the one matmul whose operands are both walked contiguously in the inner loop (`gemm_naive_bt`, because `wte` is stored `[output, input]`), while every layer weight matmul walks its B operand down a column, touching a fresh 64-byte line for every 4 bytes used. The head is 31.2% of prefill's per-token FLOPs and is amortised to a single application in a decode step, so prefill has a larger share of its work in the faster-access kernel. **The evidence available does not establish this**: it is consistent with the isolated GEMM figure below, and no measurement in this stage isolates the head.
+
+**What the isolated GEMM establishes, and what it does not.** With the entire B operand resident in L3 (2.25 MiB against an 8 MiB shared L3 and a 4 MiB effective single-thread edge), the naive `ijk` loop reaches **1.5692 GFLOP/s, 18.3% of a ceiling measured on a register-resident loop with eight independent FMA chains and no memory traffic at all**. That is the cleanest evidence this stage has, and it says that **most of the shortfall is not the memory hierarchy**: even with no capacity misses to take, the single-accumulator dot product with two loads per multiply-add gives up more than five sixths of the ceiling. The three reductions the prediction named — the exposed FMA dependency chain, two loads per FMA where the ceiling had none, and 64-byte lines touched for 4 bytes used — are consistent with that, and the emitted assembly shows the further detail that **no FMA was contracted at all**: under `/fp:precise` the inner loop is a separate `vmulss` and `vaddss`, so the "FMA" in that reasoning is two dependent instructions rather than one.
+
+**The configuration that would have separated the scalar issue-rate limit from the memory-hierarchy limit is INVALID, and the separation is therefore NOT established.** The second GEMM record — the same shape family with a 9.00 MiB B operand that exceeds the 8 MiB L3 — measured 1.2162 GFLOP/s, 22.5% below the L3-resident case, but its dispersion is 8.212% of median with five robust outliers carrying 93.3% of the squared deviation. **It is INVALID and no cache-tier conclusion may be drawn from it.** The honest statement is that the L3-resident case bounds the issue-rate contribution at roughly 18% of ceiling, and the incremental cost of leaving L3 is unmeasured at this stage.
+
+**Hardware counter evidence: NONE was collected, and the cause is unestablished to that extent.** `PERSISTENT.md` §8 W4 records that a CPU PMU source exists on this machine (`xperf`, with `CacheMisses`, `LLCReference`, `LLCMisses`, `InstructionRetired` and more, at most 7 selectable simultaneously) and that it is deliberately unused. It was **not introduced here**: proving an instrument live, measuring its own cost and keeping it outside every timed bracket is a substantial addition to a baseline stage, and W4's own stated first use is confirming W1's dispersion, which is Stage 5's question. `BENCHMARK_PROTOCOL.md` §6's requirement that a CPU stage state which counter equivalent it used is satisfied by stating that **xperf is available and was deliberately not used** — the precedent Stage 0b set. Consequently: the gap explanation above is built from operation counts, the measured scalar ceiling and the isolated GEMM configuration, and **the counters that would distinguish an issue-rate limit from an L2/L3 miss-rate limit within the forward pass were not collected**. Where the evidence does not distinguish between candidate causes, that is written here rather than resolved by choosing one.
+
+#### Files added outside this stage's declared outputs
+
+**`.gitattributes`** — one file, four lines of comment and one rule, `*.tsv text eol=lf`.
+
+The defect it fixes: `tests/test_stage1_oracle.py` regenerates `tests/fixtures/tokenizer_expected_ids.tsv` and asserts byte identity against the committed file. The generator writes LF (`reference/stage1_oracle.py`, `newline="\n"`) and the committed blobs are LF, but this machine has `core.autocrlf=true`, so **a checkout rewrites the working copy to CRLF and the test then fails on a file nobody edited**. It failed exactly that way during this stage's offline gate, on Stage 1 code this stage did not touch.
+
+Evidence that the fix changed no committed content: the blob hashes are identical at `HEAD`, at the Stage 1 commit `55dbe2a`, and as `git hash-object` of the current working copies — `tokenizer_expected_ids.tsv` `7bf1d7f844883544bfc5f062151256affa060241`, `tokenizer_roundtrip_corpus.tsv` `fce51029bfac6ad4083473828598606bb3285fcb`. **Only the checkout representation moved; the Stage 1 artifacts are byte-identical.** The rule also governs this stage's new `tests/fixtures/stage2_placeholder_prompts.tsv`.
+
+#### Where the artifacts contradicted the documents
+
+1. **`HARDWARE.md` §2 carried the wrong dispersion for the Stage 0b scalar figure.** The cell read 2.773% for the scalar reference of the SIMD loop; `bench/results/stage0b/run2/cpu_simd_peak.json` records `stddev_pct_of_median` **1.8466** for the scalar record and **2.7734** for the vectorised one, so the vectorised figure had been transcribed into both cells. **Corrected in place, one cell**, with both values and the artifact stated. No measured value changed and no other cell was touched.
+2. **`BENCHMARK_PROTOCOL.md` §2 named a timing function that does not exist on this platform.** It specified `clock_gettime(CLOCK_MONOTONIC)`, which is unavailable under MSVC, while every results file since Stage 0 and `bench_common.h` itself record `QueryPerformanceCounter`. The artifact wins: that one bullet now names `QueryPerformanceCounter` as this platform's monotonic source with `clock_gettime(CLOCK_MONOTONIC)` as the POSIX equivalent, and "Never wall clock" is preserved. Nothing else in §2 and nothing elsewhere in the file was altered — in particular **no tolerance was written into §5 and §4.2 was not touched**.
+3. **`TECHNICAL_SPEC.md` §4 had no home for four things that now exist**: `src/gemm/gemm.h`, `bench/stage2_forward_bench.c`, `tests/fixtures/`, and `.gitattributes`. Added to the existing tree in the same bounded way Stage 1 amended it — nothing regenerated, nothing reordered, §1 untouched.
+4. **The environment fingerprint disagreed with itself across stages**, which is recorded under Conditions above and registered as W12. Not resolved here.
+5. **No architecture value in any document was contradicted.** Every value read from `config.json` and the inventory matches what the Stage 1 entry recorded.
+
+#### What this stage established, in one place
+
+A GPT-2 small forward pass in C, reading published weights through the Stage 1 loader and text through the Stage 1 tokenizer, producing readable English and matching a hand-written PyTorch oracle to a maximum absolute logit divergence of **3.128e-04** with **top-1 agreement at every position** and an exact greedy sequence match — at **15.52 s per 64-token prefill** and **26.84 s per decode step at a context of 128**, which is **12.0%** and **9.8%** of this machine's measured scalar FP32 ceiling. Both figures are baselines to be beaten, not results to be defended, and the stages that beat them are named in the code that produced them.
+
 
 ## Stage 3 — Benchmark harness and correctness gate
 **Status:** not started

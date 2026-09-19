@@ -1,0 +1,9 @@
+# Line endings for the fixtures that tests compare BYTE FOR BYTE.
+#
+# tests/test_stage1_oracle.py regenerates tests/fixtures/tokenizer_expected_ids.tsv
+# and asserts the result equals the committed file byte for byte. The generator
+# writes LF (reference/stage1_oracle.py, newline="\n") and the committed blobs are
+# LF, but this machine has core.autocrlf=true, so a checkout rewrites the working
+# copy to CRLF and the comparison then fails on a file nobody edited. Marking the
+# fixtures eol=lf makes the checked-out bytes the committed bytes.
+*.tsv text eol=lf

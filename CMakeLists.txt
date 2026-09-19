@@ -310,3 +310,89 @@ else()
     message(WARNING "The .venv-oracle environment was not found; the Stage 1 "
                     "reference test is NOT registered and the suite is incomplete.")
 endif()
+
+# ------------------------------------------------ Stage 2: the forward pass ---
+# Appended, following the Stage 1 pattern exactly: engine sources compile into
+# object libraries under tie_engine, one source carries a main() behind a
+# define, tests register with tie_src_test under the same 5-minute cap. The
+# engine objects stay CUDA-free and do not link bench_core; only the benchmark
+# driver at the bottom of this block does.
+tie_engine(gemm_naive gemm/gemm_naive.c NONE)
+tie_engine(model      model.c           NONE)
+tie_engine(gpt2       main.c            GPT2_MAIN)
+
+target_sources(gpt2_tool PRIVATE
+    $<TARGET_OBJECTS:model_obj>
+    $<TARGET_OBJECTS:gemm_naive_obj>
+    $<TARGET_OBJECTS:safetensors_obj>
+    $<TARGET_OBJECTS:tokenizer_obj>)
+target_compile_definitions(gpt2_tool PRIVATE TIE_MODEL_DIR="${TIE_MODEL_DIR}")
+
+# ---- the scalar-codegen check, read from generated code rather than trusted ---
+# The frozen host flags include /O2 and /arch:AVX2, and if MSVC auto-vectorized
+# the matmul inner loop then this stage is not measuring scalar code and Stage 6
+# has nothing left to demonstrate. The listing below is compiled from the same
+# source with the SAME frozen flags -- nothing is changed to obtain it -- and
+# tests/test_gemm_naive.c reads it. This follows the precedent set by tie_ptx,
+# which emits PTX so two Stage 0 tests can assert structural properties of
+# generated device code instead of trusting a comment.
+set(TIE_ASM_DIR "${CMAKE_BINARY_DIR}/asm")
+file(MAKE_DIRECTORY "${TIE_ASM_DIR}")
+if(MSVC)
+    separate_arguments(TIE_ASM_FLAGS WINDOWS_COMMAND
+                       "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
+    add_custom_command(
+        OUTPUT "${TIE_ASM_DIR}/gemm_naive.asm"
+        COMMAND ${CMAKE_C_COMPILER} /nologo /c ${TIE_ASM_FLAGS} /FAs
+                "/Fa${TIE_ASM_DIR}/gemm_naive.asm"
+                "/Fo${TIE_ASM_DIR}/gemm_naive_asm.obj"
+                /I "${TIE_SRC_DIR}"
+                "${TIE_SRC_DIR}/gemm/gemm_naive.c"
+        DEPENDS "${TIE_SRC_DIR}/gemm/gemm_naive.c"
+        COMMENT "Emitting the assembly listing for gemm_naive with the frozen flags")
+    add_custom_target(gemm_naive_asm ALL DEPENDS "${TIE_ASM_DIR}/gemm_naive.asm")
+endif()
+
+tie_src_test(test_gemm_naive test_gemm_naive.c gemm_naive_obj)
+tie_src_test(test_model      test_model.c      model_obj gemm_naive_obj
+                                               safetensors_obj tokenizer_obj)
+if(MSVC)
+    target_compile_definitions(test_gemm_naive PRIVATE
+        TIE_ASM_FILE="${TIE_ASM_DIR}/gemm_naive.asm")
+    add_dependencies(test_gemm_naive gemm_naive_asm)
+endif()
+
+# ---- the timing driver -------------------------------------------------------
+# The engine objects under src/ touch no device and stay CUDA-free; this driver
+# is the only Stage 2 target that links bench_core, which pulls in CUDA::cudart
+# and nvml. bench_common.h is extern "C" and its CUDA event section is behind
+# __CUDACC__, so a .c translation unit includes it directly -- but bench_core is
+# compiled by nvcc as C++, so the executable is linked as C++.
+add_executable(stage2_forward_bench
+    "${CMAKE_SOURCE_DIR}/bench/stage2_forward_bench.c"
+    $<TARGET_OBJECTS:model_obj>
+    $<TARGET_OBJECTS:gemm_naive_obj>
+    $<TARGET_OBJECTS:safetensors_obj>
+    $<TARGET_OBJECTS:tokenizer_obj>)
+target_link_libraries(stage2_forward_bench PRIVATE bench_core)
+target_include_directories(stage2_forward_bench PRIVATE
+    "${TIE_SRC_DIR}" "${TIE_MB_DIR}" "${TIE_GENERATED_DIR}")
+target_compile_definitions(stage2_forward_bench PRIVATE
+    TIE_MODEL_DIR="${TIE_MODEL_DIR}" TIE_REPO_DIR="${CMAKE_SOURCE_DIR}")
+set_target_properties(stage2_forward_bench PROPERTIES
+    LINKER_LANGUAGE CXX
+    CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+
+# ---- the reference oracle's test --------------------------------------------
+# Runs under the project .venv, which carries torch and numpy. The engine binary
+# is passed by path so the test compares against the code that was just built.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME test_reference_impl
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tests/test_reference_impl.py"
+                     --engine $<TARGET_FILE:gpt2_tool>)
+    set_tests_properties(test_reference_impl PROPERTIES TIMEOUT 300)
+else()
+    message(WARNING "Python 3 interpreter not found; the Stage 2 reference test is NOT "
+                    "registered and the suite is incomplete.")
+endif()
