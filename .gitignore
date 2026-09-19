@@ -41,3 +41,6 @@ desktop.ini
 
 # NOTE: bench/results/ is deliberately NOT ignored. Those JSON files are
 # deliverables that the Stage 10 performance model reads directly.
+
+models/
+.venv-oracle/

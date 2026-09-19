@@ -231,3 +231,82 @@ else()
     message(WARNING "Python 3 interpreter not found; the three Python unit tests "
                     "are NOT registered and the suite is incomplete.")
 endif()
+
+# ------------------------------------------------------- Stage 1: src/ ------
+# The first targets built from src/ rather than bench/microbench/. They follow
+# the pattern the microbenchmarks established rather than introducing a second
+# one: one source compiles twice -- once into a runnable tool with its main()
+# enabled by a define, once into an object library without it that the unit test
+# links against -- so the code that produces a committed artifact and the code
+# the test exercises are the same code. Tests register the same way, with the
+# same 5-minute cap. The difference is the language: these are host C targets
+# that touch no device, so they do not link bench_core and their tests are .c
+# rather than .cu.
+set(TIE_SRC_DIR   "${CMAKE_SOURCE_DIR}/src")
+set(TIE_MODEL_DIR "${CMAKE_SOURCE_DIR}/models/gpt2")
+
+# tie_engine(<name> <source> <main define, or NONE>)
+function(tie_engine name source maindef)
+    add_library(${name}_obj OBJECT "${TIE_SRC_DIR}/${source}")
+    target_include_directories(${name}_obj PUBLIC "${TIE_SRC_DIR}" "${TIE_GENERATED_DIR}")
+    add_dependencies(${name}_obj tie_git_info)
+    if(NOT maindef STREQUAL "NONE")
+        add_executable(${name}_tool "${TIE_SRC_DIR}/${source}")
+        target_compile_definitions(${name}_tool PRIVATE ${maindef})
+        target_include_directories(${name}_tool PRIVATE "${TIE_SRC_DIR}" "${TIE_GENERATED_DIR}")
+        add_dependencies(${name}_tool tie_git_info)
+    endif()
+endfunction()
+
+tie_engine(safetensors safetensors.c ST_INVENTORY_MAIN)
+tie_engine(tokenizer   tokenizer.c   NONE)
+
+# The committed tensor inventory is regenerated on demand, never as part of ALL:
+# it reads the gitignored weight file, which a fresh clone does not have.
+#   cmake --build build --target gpt2_tensor_inventory
+add_custom_target(gpt2_tensor_inventory
+    COMMAND safetensors_tool
+            "${TIE_MODEL_DIR}/model.safetensors"
+            "${TIE_MODEL_DIR}/config.json"
+            "${CMAKE_SOURCE_DIR}/src/gpt2_tensor_inventory.json"
+    DEPENDS safetensors_tool
+    COMMENT "Regenerating src/gpt2_tensor_inventory.json from the shipped weights")
+
+# tie_src_test(<test name> <source> [object libraries...])
+function(tie_src_test name source)
+    add_executable(${name} "${CMAKE_SOURCE_DIR}/tests/${source}")
+    foreach(objlib ${ARGN})
+        target_sources(${name} PRIVATE $<TARGET_OBJECTS:${objlib}>)
+    endforeach()
+    target_include_directories(${name} PRIVATE
+        "${TIE_SRC_DIR}" "${CMAKE_SOURCE_DIR}/tests" "${TIE_GENERATED_DIR}")
+    target_compile_definitions(${name} PRIVATE
+        TIE_REPO_DIR="${CMAKE_SOURCE_DIR}"
+        TIE_MODEL_DIR="${TIE_MODEL_DIR}")
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES TIMEOUT 300)   # 5-minute per-test cap
+endfunction()
+
+tie_src_test(test_safetensors test_safetensors.c safetensors_obj)
+tie_src_test(test_tokenizer   test_tokenizer.c   tokenizer_obj)
+
+# The Stage 1 oracle test runs under the SEPARATE oracle environment, which
+# carries tokenizers and safetensors. The project .venv registered above carries
+# the PyTorch oracle and is a frozen fingerprint value; nothing is installed into
+# either. The two registrations are deliberately distinct.
+if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/.venv-oracle/Scripts/python.exe")
+    set(TIE_ORACLE_PYTHON "${CMAKE_SOURCE_DIR}/.venv-oracle/Scripts/python.exe")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/.venv-oracle/bin/python")
+    set(TIE_ORACLE_PYTHON "${CMAKE_SOURCE_DIR}/.venv-oracle/bin/python")
+else()
+    set(TIE_ORACLE_PYTHON "")
+endif()
+message(STATUS "  oracle python : ${TIE_ORACLE_PYTHON}")
+if(TIE_ORACLE_PYTHON)
+    add_test(NAME test_stage1_oracle
+             COMMAND ${TIE_ORACLE_PYTHON} "${CMAKE_SOURCE_DIR}/tests/test_stage1_oracle.py")
+    set_tests_properties(test_stage1_oracle PROPERTIES TIMEOUT 300)
+else()
+    message(WARNING "The .venv-oracle environment was not found; the Stage 1 "
+                    "reference test is NOT registered and the suite is incomplete.")
+endif()

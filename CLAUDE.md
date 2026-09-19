@@ -106,7 +106,7 @@ fill blanks in existing tables, append to existing sections, preserve surroundin
 Never regenerate, restructure, or reorder one. Where a row cannot be filled, write the reason in
 the cell. If a foundation document is missing, **STOP and report** — do not author a replacement.
 
-`CC_PROMPT_FORMAT.md` and `KICKOFF_TEMPLATE.md` are the operator's authoring tools, not project
+`CLAUDE_CODE_PROMPT_FORMAT.md` and `KICKOFF_TEMPLATE.md` are the operator's authoring tools, not project
 outputs. Do not edit, move, delete, or reference them.
 
 Claude never writes or revises a prediction. Predictions are the operator's, verbatim.

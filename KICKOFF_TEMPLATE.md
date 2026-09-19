@@ -98,6 +98,9 @@ RULE 7 — SELF-AUDIT BEFORE DELIVERY. Run silently:
   □ Every hardware figure — transcribed from HARDWARE.md, not memory?
   □ Every measurement rule — matches BENCHMARK_PROTOCOL.md?
   □ Prediction block present and verbatim (or stage correctly exempt per RULE 3)?
+  □ PERSISTENT §8 read, and owned / touchable / irrelevant items reported by ID?
+  □ Every §8 item this stage owns carried into the prompt with its ID, and every item it could
+    touch named with an instruction not to act on it?
   □ Prefill and decode separated everywhere a timing appears?
   □ Correctness gate wired into the stage's accept criteria?
   □ Nsight counter collection specified for any GPU stage (Stage 7 onward)?
@@ -119,6 +122,8 @@ Before the prompt, state which checks are USER-ONLY:
   □ Any toolchain install needed before the session.
 Everything else — authoring, compiling, unit tests, the correctness gate — is AGENT-OFFLINE and
 the agent runs it itself.
+
+If a stage contains no timed run, the honest answer is that there are no user-only checks, and you say so plainly rather than inventing some. RULE 10's stop still applies — its purpose there is approval of the work before it is committed, not approval of measurement conditions. Elevation is likewise conditional: it is a session property that machine_state.py verify cannot detect, so do not require it for a session that times nothing.
 
 RULE 9 — REAL ARTIFACTS BEAT DOCUMENTS.
 Model architecture values come from the config file shipped with the weights, not TECHNICAL_SPEC
@@ -144,8 +149,10 @@ hands me ONLY the RULE 8 user-only checks as a HARD CHECKPOINT and waits.
     MEASUREMENTS.md entry from actual results, never estimated; (5) draft the Gap section with
     predicted vs measured, the mechanism, and **the specific counter that evidences it** —
     where the counters do not distinguish between candidate causes, write that plainly rather
-    than picking one; (6) append future-relevant flags to PERSISTENT.md in the existing entry
-    shape and bump "Last updated:"; (7) append this stage's concepts to LEARNING.md under its
+    than picking one; (6) update PERSISTENT.md: append next-session flags to §7 in the existing entry shape; for any
+    item owned by a stage more than one session away, add or update a §8 row with its ID rather
+    than writing it into §7, per RULE 21; update the Status of every §8 item this stage owned or
+    touched; bump "Last updated:"; (7) append this stage's concepts to LEARNING.md under its
     stage heading, marked `unread`, including any concept encountered that is not already listed;
     (8) git add -A; (9) git ls-files > repo-files.txt; (10) git add repo-files.txt; (11) commit
     descriptively; (12) push; (13) open a PR via the GitHub MCP tool. Report the PR URL.
@@ -197,6 +204,13 @@ in MEASUREMENTS.md and every number in a final report comes from a run that happ
 did not happen, the field stays empty and the report says so. Self-relative speedups against the
 project's own naive baseline are intermediate detail, never a headline figure.
 
+A statistic computed for diagnosis is not a measurement and never becomes one. Trimmed means,
+outlier-removed standard deviations, interquartile ranges and any other robust statistic may be
+computed to characterise a distribution, and must be labelled as diagnostic wherever they appear.
+They never enter HARDWARE.md, never appear as a value in a final report, and above all never
+convert an INVALID run into a valid one. If a run fails the 5%-of-median test, the way to pass it
+is a better measurement, not a better statistic.
+
 RULE 17 — GAP EXPLANATIONS REQUIRE COUNTER EVIDENCE.
 For any GPU stage, a gap explanation must name the Nsight counter supporting it and give that
 counter's value. Where the counters do not distinguish between candidate causes, Claude Code
@@ -229,6 +243,7 @@ and reports any process still present. It never closes anything itself.
 If the recorded set differs from Stage 0's, the agent states the difference explicitly,
 because the noise floor was measured against Stage 0's set and a changed set means the
 floor may no longer apply.
+Background process load is the main case but not the only one. Any run condition that differs from the prior stage's — network connection type and whether it is metered, an added sampler and its duty cycle, session elevation — is recorded in the MEASUREMENTS.md entry the same way, because an unrecorded deviation is a fabricated number.
 
 RULE 20 — GIT SUCCESS IS VERIFIED BY STATE, NOT BY EXIT CODE.
 A push is confirmed with git ls-remote against the branch, not by a zero exit status.
@@ -262,3 +277,31 @@ not, per RULE 16.
 Any new work item a stage raises that is owned by a stage more than one session away goes into §8
 with a new ID, not into §7. §7 may carry a one-line pointer to the ID. Never duplicate the text in
 both — a fact recorded twice will eventually disagree with itself.
+
+RULE 22 — BRANCH AND PR DISCIPLINE IS PART OF THE PROMPT, NOT AN ASSUMPTION.
+Every prompt names the branch explicitly, states that it is cut from `main`, and states that the
+session ends in one PR into `main`. Never commit to `main`. One stage is one commit-complete unit,
+so a session must not fold its work into another stage's open branch or open PR — doing so puts a
+change into a PR whose title and MEASUREMENTS.md entry do not describe it, and the reviewer of that
+PR is then reviewing something it does not claim to contain.
+
+If the agent has a reason to deviate — the named branch already exists, the working tree is dirty,
+the base has moved — it STOPS and reports before committing rather than choosing a branch itself.
+This is not hypothetical: a documentation session instructed to use its own branch pushed to the
+previous stage's branch instead and folded its commit into that stage's open PR, and reported the
+outcome without flagging that it had disregarded the instruction. The prompt must make the branch a
+named requirement and make an unplanned deviation a stop-and-report, not a judgement call.
+
+RULE 23 — AN INSTRUMENT IS PROVEN LIVE BEFORE IT IS TRUSTED, AND ITS COST IS MEASURED.
+Any prompt that introduces a sensor, counter, probe or telemetry source instructs the agent to
+demonstrate, before using it, that its readings MOVE under a load the agent applies and return when
+the load stops, and to report the observed range. A source that does not move is a static nominal
+read, not a measurement, and must be reported as unavailable rather than logged as data. Stage 0
+recorded a constant CPU frequency and a constant package temperature across 209 samples while load
+varied between 4 and 36 percent; Stage 0b established that one of those sources is genuinely live
+and the other genuinely is not, and that the difference is only visible if you look.
+
+The probe's own cost is measured before use and compared against the duration of the thing being
+measured. A probe costing a meaningful fraction of a sample manufactures the variance it was
+brought in to diagnose. No probe is ever called inside a timed bracket; sampling happens outside
+it, or from a separate process pinned away from the measured thread and its SMT sibling.

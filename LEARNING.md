@@ -91,6 +91,19 @@ Mark each: `unread` → `read` → `can explain` → `can defend a follow-up`.
 - Byte-pair encoding: how the merge table is built and applied
 - Tensor memory layout: row-major versus column-major, strides, why layout changes performance
 
+*Appended by the Stage 1 session, 2026-09-18.*
+
+- **The byte-level BPE scheme end to end.** Why a tokenizer maps 256 byte values onto printable codepoints before merging anything, what that buys — every possible byte sequence is encodable, so the tokenizer cannot fail on input — and why the round trip is therefore total rather than best-effort `unread`
+- **Merge-rank ordering as the whole of BPE.** The merge table is a priority list, not a dictionary: the loop repeatedly applies the lowest-ranked adjacent pair, and a rank off by one produces a plausible tokenization that is wrong everywhere. Why comparing only decoded text cannot catch that, and comparing id sequences can `unread`
+- **Pre-tokenization is part of the tokenizer, not a preliminary.** The GPT-2 split pattern, why `\s+(?!\S)` makes a whitespace run give up its last character to the next piece, and why merges never cross a piece boundary `unread`
+- **The safetensors container**: a 64-bit little-endian length prefix, a JSON header, and a data segment whose offsets are relative to the segment rather than the file — plus what it means that the format guarantees no alignment at all `unread`
+- **Offset arithmetic as a validation discipline**: checking every declared range against the file size, checking declared length against the product of extents times the dtype size, and checking that no two ranges overlap — three cheap invariants that between them catch a corrupt or truncated weight file before it becomes a wrong answer `unread`
+- **Storage orientation versus implementation convention.** A checkpoint stores `[input, output]`; a `nn.Linear`-style implementation expects `[output, input]`. The two are transposes and nothing in the file says which it is — the reconciliation belongs in the loader, explicitly, and the evidence that settles it can be arithmetic (a bias has one entry per output) or, where the axes are equal, nothing at all `unread`
+- **Tied embeddings.** Why a language-model head can be the token embedding matrix re-used transposed, why the checkpoint then stores no head tensor, and why a loader that does not know this fails in a way that looks like a bug somewhere else `unread`
+- **What an exact byte comparison does and does not verify.** It proves the loader read the right bytes; it cannot prove the loader will interpret them correctly, because both sides read the same bytes and report the same shape. The difference between *parsed and shape-checked* and *verified*, and knowing which one you are claiming `unread`
+- **The generated-table judgement call.** When a dependency would be permanent, a table derived by probing the reference and baked into the source can be the smaller commitment — and the dependency it silently creates on the reference's exact version. Why the derived table disagreed with a convenient Unicode data file at 5008 codepoints, and why that disagreement is the argument for deriving it `unread`
+- **The limits of an oracle, and when a stated gap beats a green check.** Where a reference API refuses the input entirely, the honest output is a documented behaviour and an empty field with its reason — not a comparison rerouted through the implementation under test until it agrees with itself `unread`
+
 ## Stage 2 — Transformer forward pass
 - Self-attention mechanically: Q, K, V projections, scaled dot product, softmax, output projection
 - Why attention is quadratic in sequence length
