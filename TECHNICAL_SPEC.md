@@ -106,10 +106,11 @@ Build only after Stage 12. Each is independently valuable; none is required for 
 /
   PROJECT.md  HARDWARE.md  TECHNICAL_SPEC.md  BENCHMARK_PROTOCOL.md
   MEASUREMENTS.md  LEARNING.md  PERSISTENT.md  README.md
+  .gitattributes      # Stage 2: fixtures compared byte for byte are eol=lf
   src/
     main.c  model.c/h  tokenizer.c/h  safetensors.c/h
     gpt2_tensor_inventory.json   # Stage 1, committed; Stage 2 consumes it
-    gemm/    gemm_naive.c  gemm_blocked.c  gemm_simd.c
+    gemm/    gemm.h  gemm_naive.c  gemm_blocked.c  gemm_simd.c
     cuda/    forward.cu  gemm_naive.cu  gemm_tiled.cu
              flash_attention.cu  gemm_systolic.cu
   bench/
@@ -117,6 +118,7 @@ Build only after Stage 12. Each is independently valuable; none is required for 
     harness.py           # Stage 3
     correctness.py
     profile.py           # Nsight Compute wrapper
+    stage2_forward_bench.c   # Stage 2, temporary; Stage 3's harness replaces it
     results/
   model/
     perf_model.py        # Stage 10
@@ -125,6 +127,7 @@ Build only after Stage 12. Each is independently valuable; none is required for 
   reference/
     reference_impl.py
   tests/              # one test per source file, registered with CTest
+    fixtures/         # committed test inputs (Stage 1 corpora, Stage 2 placeholder prompts)
   scripts/            # build.ps1 and the CMake helpers
   models/             # downloaded weights and tokenizer artifacts; gitignored, never committed
   dashboard/

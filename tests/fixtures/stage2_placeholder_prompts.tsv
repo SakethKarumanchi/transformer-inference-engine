@@ -1,0 +1,29 @@
+# stage2_placeholder_prompts.tsv -- PLACEHOLDER INPUTS. NOT THE BENCHMARK PROMPT SET.
+#
+# STATUS: PLACEHOLDER. Open decision D3 (PERSISTENT.md section 1) -- the benchmark prompt set
+# and token counts -- is OPEN and is owned by STAGE 3. Stage 2 is not entitled to take it and
+# does not propose these strings as the prompt set. It needed inputs in order to time anything
+# at all, so it wrote ordinary English text of its own and labelled it, in three places: this
+# header, the Stage 2 MEASUREMENTS.md entry, and a structured field in the results files.
+#
+# The consequence is registered as deferred work item W11 (PERSISTENT.md section 8), owned by
+# Stage 3: Stage 2's baseline latencies were measured on these placeholders, and the
+# cross-stage waterfall is compared against them. Stage 3, having fixed D3, either re-runs the
+# committed Stage 2 binary at the fixed prompt set and records that as a dated second
+# measurement, or states that these figures are excluded from the waterfall and why.
+#
+# The Stage 1 round-trip corpus (tests/fixtures/tokenizer_roundtrip_corpus.tsv) is explicitly
+# NOT a candidate for either use: those strings exist to break a tokenizer -- embedded NULs,
+# invalid UTF-8, lone surrogates -- and are labelled test fixtures in their own header. These
+# are ordinary English prose, which is what a language model baseline should be timed on.
+#
+# Columns, tab separated: id, intended_use, text
+# The text is deliberately longer than the longest configuration needs. The benchmark encodes
+# it once and TRUNCATES the id sequence to the exact token count a configuration asks for, so
+# the token counts are exact rather than approximate, and every configuration is a prefix of
+# the same text. Token counts are a property of the tokenizer, not of this file, and are
+# recorded in the results file at run time.
+#
+p1	prefill and decode, every configuration; truncated to 32, 64 or 128 tokens	The lighthouse stood at the end of a narrow spit of land, and for most of the year it was the only building anyone could see from the water. Its keeper had lived there for eleven winters, long enough to know which storms would pass in a single night and which would settle in for a week and strip the paint from the seaward wall. He kept a notebook of the weather, one line for each day, written in pencil because ink froze in the small hours. Visitors were rare. In summer a boat might bring a surveyor or a pair of students counting seabirds, and they would ask the same questions in the same order, and he would answer them patiently while the kettle boiled. When they left he would climb the stairs, wind the mechanism, and watch the beam swing out across the grey water until the light of the town behind him went out one window at a time.
+p2	a short opening for the untimed generation sample	The capital city of France is
+p3	a second short opening, for the divergence statistics at a second sequence length	In the years before the railway arrived, the valley was reached only by a single road, and the people who lived there

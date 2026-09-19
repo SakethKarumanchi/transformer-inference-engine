@@ -109,7 +109,12 @@ the cell. If a foundation document is missing, **STOP and report** — do not au
 `CLAUDE_CODE_PROMPT_FORMAT.md` and `KICKOFF_TEMPLATE.md` are the operator's authoring tools, not project
 outputs. Do not edit, move, delete, or reference them.
 
-Claude never writes or revises a prediction. Predictions are the operator's, verbatim.
+Claude Code never writes, revises, improves, corrects, or comments on a prediction. The
+prediction arrives in the stage prompt, is transcribed verbatim -- mistakes included -- and
+is committed alone before any implementation code exists. After that commit it is sealed:
+it is not consulted again until the Gap section, and it never influences a configuration, a
+sample count, an implementation choice, or the decision to investigate an anomaly. A
+prediction produced by the thing being measured is worthless.
 
 ## Session protocol
 
