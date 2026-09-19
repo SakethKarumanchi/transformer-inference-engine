@@ -31,11 +31,7 @@ Confirm §8 exists and is populated. If it does not exist, say so plainly and do
 though the deferred items are safe in §7 — they are not, because this stage's own session rewrites
 that section.]
 
-PREDICTION BRIEFING — before writing the Claude Code prompt, produce the prediction briefing for
-this stage per RULE 14. I write my guess in this chat BEFORE you finalize the prompt; my guess
-goes into the prompt verbatim so Claude Code can commit it to MEASUREMENTS.md before writing any
-code. From Stage 11 onward the prediction comes from the Stage 10 performance model, not from me
-— see RULE 14(e).
+PREDICTION — required for every stage RULE 3 does not exempt. The prediction is derived in the kickoff conversation from the foundation documents and the committed artifacts, before the Claude Code prompt is written, and goes into the prompt verbatim so Claude Code can commit it to MEASUREMENTS.md before any implementation code exists. Its derivation is written out in full, and the method behind it is extracted into LEARNING.md per RULE 14. From Stage 11 onward the prediction comes from the Stage 10 performance model — see RULE 14(e).
 
 CC PROMPT BODY FORMAT — before writing the Claude Code prompt, read CC_PROMPT_FORMAT.md in
 project knowledge and match its house format (== CAPS == section delimiters, the fixed section
@@ -76,9 +72,7 @@ prediction or the performance model.
 
 RULE 3 — PREDICTION GATE. No build session runs without a committed prediction.
 Stages 4–9 and 11 carry my prediction verbatim; the prompt instructs Claude Code to write it into
-MEASUREMENTS.md and commit BEFORE any implementation code. Exempt: Stage 0, 1, 3, 12 and the
-optional stages. Stage 2 predicts the baseline itself. Stage 10 predicts nothing — its result is
-an error distribution.
+MEASUREMENTS.md and commit BEFORE any implementation code. Stages 4–9 and 11 carry a prediction verbatim; the prompt instructs Claude Code to write it into MEASUREMENTS.md and commit BEFORE any implementation code. Exempt: Stage 0, 1, 3, 12 and the optional stages. Stage 2 predicts the baseline itself. Stage 10 predicts nothing — its result is an error distribution.
 
 RULE 4 — COUNT FILES AND ASSERTS BEFORE STATING A COUNT. Enumerate, then count.
 
@@ -174,29 +168,18 @@ RULE 13 — OPEN DECISIONS RESOLVE AS BUILD-TIME DETERMINATIONS, NOT APPROVAL GA
 With plan mode OFF: "DETERMINE the convention from the live repo, pick accordingly, build it, and
 STATE which you chose and why." if-X-then-Y-else-Z form. No STOP-for-approval unless opted in.
 
-RULE 14 — PREDICTION BRIEFING.
-Before the prompt, produce a briefing with these parts:
-  (a) WHAT YOU ARE PREDICTING — the specific quantity, prefill and decode separated.
-  (b) THE MINIMUM YOU NEED TO KNOW — the smallest set of concepts needed for a defensible guess.
-      Fifteen to thirty minutes of reading, not a syllabus. Explain plainly, assuming no prior
-      knowledge. I am not learning this material during the project; I need exactly enough to
-      guess, and no more.
-  (c) THE REASONING SHAPE — the form a good answer takes, with the relevant HARDWARE.md figures
-      named, WITHOUT giving the answer.
-  (d) THE RANGE CHECK — after I give my guess, say whether it is defensible and why, what a
-      wildly wrong guess would imply, and what result would falsify my reasoning.
-  (e) FROM STAGE 11 ONWARD — the prediction comes from running the Stage 10 performance model,
-      not from me. The briefing instead states which model terms apply and what the model outputs.
-      This is the model's prospective test and the reason it exists.
-Neither of us knows the true answer; nothing has been run. Helping me reason toward a guess is
-legitimate. Supplying the guess is not. If I ask you to just write it, refuse and walk me through
-(b) instead.
+RULE 14 — PREDICTION DERIVATION AND ITS METHOD.
+Before the prompt, produce the prediction and its derivation, with these parts:
+(a) WHAT IS PREDICTED — the specific quantity, prefill and decode separated, each with the sequence length or context length it is attached to. A latency with no length attached is not a prediction.
+(b) INPUTS AND THEIR SOURCES — every figure used, cited to its document or artifact, and every figure deliberately NOT used, with the reason. A denominator excluded for the right reason is as much a part of the derivation as one included.
+(c) THE DERIVATION, IN FULL — the arithmetic shown, every assumption named, and where two routes exist (compute-bound and memory-bound), both evaluated with a statement of which one binds and why.
+(d) THE FALSIFICATION CONDITION — the result that would show the reasoning wrong rather than merely the arithmetic imprecise. State the threshold before measurement.
+(e) FROM STAGE 11 ONWARD — the prediction comes from running the Stage 10 performance model. The derivation instead states which model terms apply and what the model outputs. This is the model's prospective test and the reason it exists.
+(f) THE METHOD, FOR LEARNING.md — the reusable technique behind the derivation, written so a later stage applies it without re-deriving it, appended under that stage's heading marked unread. The prediction is a number; the method is the thing that transfers.
 
 RULE 15 — PREDICTION IS NOT THE AGENT'S JOB.
-Claude Code never writes, revises, improves, or suggests a prediction. It transcribes mine
-verbatim and commits it before building. If a performance stage's prompt arrives without a
-prediction block, Claude Code STOPS and reports. A prediction produced by the thing being
-measured is worthless.
+Claude Code never writes, revises, improves, corrects, or comments on a prediction. It transcribes the one in the prompt verbatim and commits it alone before building. If the reasoning contains a mistake, it leaves the mistake alone — the gap analysis is where that gets addressed. If a non-exempt stage's prompt arrives without a prediction block, Claude Code STOPS and reports.
+The prediction is sealed between its commit and the Gap section. It must not influence sequence lengths, context lengths, sample counts, warmup, implementation choices, or the decision to investigate an anomaly. Every configuration comes from the protocol and from a measured iteration cost, never from a predicted value. A measurement far from the prediction is a finding to explain, never a signal to re-check that measurement harder than any other.
 
 RULE 16 — NO UNEARNED NUMBERS.
 Claude Code never estimates, projects, extrapolates, or rounds a performance figure. Every number
