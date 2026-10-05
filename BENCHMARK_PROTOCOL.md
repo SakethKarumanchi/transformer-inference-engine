@@ -66,7 +66,34 @@ An optimization that changes the output is not an optimization.
 
 - **Oracle:** the PyTorch reference.
 - **Check:** logits compared elementwise after a fixed prompt.
-- **Tolerance:** relative error threshold set in Stage 3 and recorded here once chosen. Floating-point reassociation makes bit-exactness unachievable across implementations; the tolerance must be justified, not picked arbitrarily.
+- **Tolerance — D2, RESOLVED in Stage 3 on 2026-10-04. The value is `6e-03`, an ABSOLUTE difference in logit units.** Floating-point reassociation makes bit-exactness unachievable across implementations, so the tolerance must be justified, not picked arbitrarily. Machine-readable form, which `bench/correctness.py` parses so the value is read rather than duplicated in code: `D2_MAX_ABS_LOGIT_DIFF = 6e-3`
+
+  **The form of the check.** The gate figure is the maximum **elementwise ABSOLUTE** difference over the **full logit vector at every position** of a prefill, computed in float32 on both sides against the PyTorch reference. It is absolute rather than relative because the upper bound that makes the tolerance meaningful — the gap between the top-1 and top-2 reference logits — is a quantity in absolute logit units, and a relative threshold cannot be compared against it. Relative statistics are still computed and reported — maximum relative difference against a denominator of `|reference| + 1e-6` elementwise, with the count of elements below that floor stated — but **they do not gate**. `gpt2_tool --dump-logits` emits logits for every position, so both bounds below are measured over the whole prefill and not over a subset.
+
+  **The application rule.** PASS requires all three, and any one failing is a FAIL reported as a FAIL: (1) maximum absolute difference **at or below** `6e-03`; (2) top-1 agreement at **every** position; (3) the greedy-decoded token sequence matches the reference on the fixed prompt set (§4). A difference exactly equal to the threshold passes, which is what makes the threshold a stated boundary rather than an open interval whose edge nobody can test. The check is implemented once, in `bench/correctness.py`, and returns a FAIL rather than raising, so timings honestly taken are still recorded as taken.
+
+  **Measured figures the arithmetic rests on**, from `bench/results/stage3/stage3_correctness.json`, the D3 fixed prompt set, the Stage 2 engine, `--cproj as-stored`:
+
+  | D3 prefill length | max absolute divergence | minimum reference top-1/top-2 margin | position of that minimum | margin ÷ divergence | top-1 agreement |
+  |---|---|---|---|---|---|
+  | L = 16 | 3.967285e-04 | 5.915833e-02 | 13 | 149.12x | 16 of 16 |
+  | L = 32 | 4.272461e-04 | **7.812500e-03** | 11 | 18.29x | 32 of 32 |
+  | L = 64 | 4.425049e-04 | 4.189301e-02 | 1 | 94.67x | 64 of 64 |
+  | L = 128 | **7.019043e-04** | 4.366302e-02 | 118 | 62.21x | 128 of 128 |
+
+  **Condition (a) — the LOWER bound, from observed divergence at the longest D3 length.** The threshold must exceed the maximum observed absolute divergence by a factor of at least 3. At L = 128 that divergence is **7.019043e-04**, so the lower bound is `3 x 7.019043e-04` = **2.105713e-03**.
+
+  **Condition (b) — the UPPER bound, from the minimum decision margin at the longest D3 length.** The threshold must fall below the minimum reference top-1/top-2 margin by a factor of at least 3. At L = 128 that margin is **4.366302e-02** at position 118, so the upper bound is `4.366302e-02 / 3` = **1.455434e-02**.
+
+  **Condition (d) — the window is not too narrow to use.** `4.366302e-02 / 7.019043e-04` = **62.21x**, comfortably above the required factor of 9 end to end.
+
+  **Condition (c) — the value.** The geometric mean of the two bounds is `sqrt(2.105713e-03 x 1.455434e-02)` = **5.535997e-03**. Rounded to one significant figure that is **6e-03**, and 6e-03 keeps both ratios at or above 3. **Achieved safety factors: 6e-03 / 7.019043e-04 = 8.55x above the observed divergence, and 4.366302e-02 / 6e-03 = 7.28x below the minimum margin.** (5e-03 also clears both at 7.12x and 8.73x; 6e-03 is what the stated rounding rule selects.)
+
+  **Which bound is a property of what, and the circularity that remains.** The lower bound is a property of **this engine's current divergence** and moves if the engine changes — a Stage 5 blocking rewrite reassociates differently and will produce its own figure. The upper bound is a property of the **reference alone**, and no change to the engine can move it. That asymmetry is why the upper bound is the one that makes the check meaningful: a threshold justified only against the thing being measured is justified by its own subject.
+
+  **A qualification that travels with the figure, and must be repeated wherever it is used.** The minimum margin over the **whole** D3 set is **7.812500e-03**, at L = 32 position 11 — smaller than at L = 128. The margin therefore does **not** degrade monotonically with length across this set, because the four D3 rows are **independent prose and not nested prefixes of one string**: each row's margin minimum is a property of its own text. Stage 2's observation that the minimum margin more than halved from L = 8 to L = 16 was a nested-prefix effect, where adding positions can only lower a minimum, and it does not generalise here. Against that set-wide minimum, 6e-03 leaves only **1.30x**, below the factor of 3 condition (b) asks for. Had the upper bound been evaluated set-wide the window would be `[2.105713e-03, 2.604167e-03]`, a span of only 1.24x end to end, and **no one-significant-figure value lies inside it**: 2e-03 fails the lower bound at 2.85x and 3e-03 fails the upper at 2.60x. The set-wide margin-to-divergence factor is 11.13x, which does still clear condition (d). What protects the gate in practice is that condition (2) is checked **directly** rather than inferred from the tolerance: top-1 agreement was complete at all four lengths, 16 of 16, 32 of 32, 64 of 64 and 128 of 128.
+
+  **Corroboration, not input.** Stage 2 measured 3.1281e-04 at L = 8 and at L = 16 on placeholder inputs. The D3 figures of 3.97e-04 to 7.02e-04 are the same order of magnitude; unlike Stage 2's two nested lengths, divergence here does grow slowly with length. The Stage 2 figures were not used to derive either bound.
 - **Also required:** greedy-decoded token sequence matches the reference on a fixed prompt set.
 - **Flash attention (Stage 9) additionally:** online softmax must be numerically stable. Verify against the reference at long sequence lengths specifically, where a naive running-max implementation loses precision. Report the observed error at the longest tested length.
 - **Quantization stages:** tolerance necessarily loosens. The new tolerance and the observed divergence are both results, reported plainly.

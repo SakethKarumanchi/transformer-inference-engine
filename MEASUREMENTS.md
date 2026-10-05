@@ -931,6 +931,37 @@ Prefill at L = 32 is excluded from this table: its run is INVALID and no through
 
 The live source moved across a range of **116% to 228% of nominal** during the session while the static nominal read stayed at 2496 MHz throughout — which is exactly why Stage 0b classified the third source as static and kept the first. `% Performance Limit` was **100.0 on every one of the 122,428 samples**, so no platform-imposed frequency ceiling was asserted at any point in the run. **What this does not establish:** the counter is a `_Total` across all logical processors, not the measured thread's own frequency, and no package temperature was available, so it bounds the session rather than attributing anything to a configuration.
 
+#### SECOND MEASUREMENT — re-run at the D3 fixed prompt set, 2026-10-05 (W11)
+
+*The original figures above are the PLACEHOLDER measurement and are left exactly as they were, with their labels intact. This block is a second, later measurement of the same binary on different inputs. The two are never merged and never averaged.*
+
+**Stage 2 binary**, source at commit `20e4f4e`, re-parameterised for the fixed prompt set by Stage 3 with **identical timing code** — `bench_run`, the timed bodies, the bracket contents, the warmup and sample handling, the statistics and the 5%-of-median validity rule are unchanged; only the fixture loader, the configuration list, the results stem and the prompt-set labelling were parameterised. **Date** 2026-10-05. **Results file** `bench/results/stage3/stage3_harness.json`, which is simultaneously Stage 3's own measurement and this re-run — one timed set, one artifact, cited from both entries. **Conditions** are the Stage 3 entry's conditions block: fingerprint 25 of 25 clean, clock locked and verified at 1365 MHz, 25 warmup and 30 samples, thread pinned to logical CPU 2.
+
+**PREFILL at the D3 prompt set.**
+
+| Configuration | Row | Samples | Median | Min | Max | Std dev (% of median) | Verdict |
+|---|---|---|---|---|---|---|---|
+| Prefill, L = 16 | `d3_16` | 30 | **3537.051 ms** | 3514.392 ms | 3565.556 ms | 0.328% | VALID |
+| Prefill, L = 32 | `d3_32` | 30 | **7058.383 ms** | 7032.262 ms | 7191.453 ms | 0.424% | VALID |
+| Prefill, L = 64 | `d3_64` | 30 | **14121.470 ms** | 14095.015 ms | 14420.316 ms | 0.444% | VALID |
+| Prefill, L = 128 | `d3_128` | 30 | 28420.739 ms | 28302.326 ms | 33181.064 ms | **5.723%** | **INVALID** |
+
+**DECODE at the D3 prompt set.** Contexts match the placeholder run's exactly, so the Stage 4 comparison is like for like.
+
+| Configuration | Row | Samples | Median | Min | Max | Std dev (% of median) | Verdict |
+|---|---|---|---|---|---|---|---|
+| Decode step, c = 32 | `d3_32` | 30 | **5925.150 ms** | 5906.286 ms | 6460.867 ms | 1.677% | VALID |
+| Decode step, c = 64 | `d3_64` | 30 | 11858.971 ms | 11803.567 ms | 18595.912 ms | **15.936%** | **INVALID** |
+| Decode step, c = 128 | `d3_128` | 30 | **23735.411 ms** | 23675.880 ms | 24120.160 ms | 0.462% | VALID |
+
+**ISOLATED GEMM**, unchanged configuration, independent of the prompt set.
+
+| Configuration | Samples | Median | Std dev (% of median) | Throughput | Verdict |
+|---|---|---|---|---|---|
+| M=32 N=768 K=768 | 30 | 21.323 ms | 3.490% | 1.770 GFLOP/s | VALID |
+| M=32 N=3072 K=768 | 30 | 120.753 ms | 1.305% | 1.250 GFLOP/s | VALID |
+
+**These re-run figures are the waterfall baseline from Stage 4 onward.** The placeholder figures above remain the historical record of what was measured on inputs no other stage uses, and are not compared against anything. **There is no baseline at prefill L = 128 or at decode c = 64**, because both are INVALID and an INVALID run is not a baseline. The regression comparison between the two runs was **REFUSED on every forward-pass configuration**, correctly, because the prompt sets differ — which is the whole reason W11 existed. Full detail in the Stage 3 entry.
 #### The W3 observation, recorded without changing the item
 
 `PERSISTENT.md` §8 **W3** predicts that decode-shaped timings will be INVALID roughly half the time under a 30-sample construction, from Stage 0's M = 1 GEMM configurations whose medians were **30–90 µs** with spike-carried variance. This stage produced the project's first decode timing, and it falls **far outside that band**: the decode-step medians are **6561, 13193 and 26843 ms** — five orders of magnitude above 30–90 µs — with dispersion of **1.299%, 1.217% and 3.579%** of median, all VALID.
@@ -998,8 +1029,282 @@ A GPT-2 small forward pass in C, reading published weights through the Stage 1 l
 
 
 ## Stage 3 — Benchmark harness and correctness gate
-**Status:** not started
-Record: the chosen numerical tolerance and the justification for that specific value.
+*Build the measurement infrastructure every later stage depends on, and close the two decisions that have been open since Stage 0.*
+**Status:** COMPLETE, 2026-10-05. Offline gate green (clean build, **22/22 tests**). **Stage 3 is EXEMPT from the prediction gate** (Stage 0, 1, 3, 12 and the optional stages are exempt), so this entry carries no Prediction and no Gap section. Nine timed configurations in one set, 25 warmup and 30 samples each: **seven VALID, two INVALID and named**. **D2 RESOLVED at `6e-03`**, **D3 RESOLVED** at four rows of 16/32/64/128 tokens, **W12 CLOSED**, **W9 CLOSED**, **W11 CLOSED**, **W3 updated and still open for Stage 4**, **W13 raised**. Correctness gate: **PASS**. No Nsight counters and no headline ratio, both with reasons stated below.
+
+#### Conditions
+
+| Condition | Value |
+|---|---|
+| Date, branch | 2026-10-05, branch `stage-3` cut from `main` at `40622c5` |
+| Prediction commit | **None — Stage 3 is exempt from the prediction gate.** No prediction was written, transcribed or committed |
+| Environment fingerprint | `machine_state.py verify` after the clean build and again immediately before the first timed run: **25 of 25 compared fields clean, 0 differing, exit 0**. The comparison set is 25 rather than 26 because of this stage's W12 fix; `build_flags.BENCH_BUILD_TIMESTAMP` is reported in a provenance block as stored `2026-09-18T06:56:02Z` against current `2026-10-05T04:38:53Z`, labelled informational and **not compared**. **No substantive field differs**, so the comparison against prior stages stands. `bench/results/machine_fingerprint.json` was NOT rewritten and the `fingerprint` subcommand was never run |
+| Clock lock | `nvidia-smi -lgc 1365,1365` applied from an elevated shell, then verified **by state**: `verify-lock --mhz 1365` → `locked: true`, **10 of 10 samples at 1365 MHz**, `off_target_samples: []`, exit 0. Re-verified after an interrupted first attempt and found still in effect — the lock is device state and survived. `-lmc` **not attempted** (§2 Q11) |
+| Compiler and flags | **Confirmed unchanged against `HARDWARE.md` §5.5**, by the fingerprint comparison above and by the provenance the C layer compiled into the results file: MSVC 19.44.35229.0, toolset 14.44.35207. Host flags `/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG`; nvcc 13.1.80, `-arch=sm_75`. **No `-allow-unsupported-compiler`** |
+| AC power | **On AC**, `ac_line_status 1`, battery 99%. A run on battery is INVALID outright and none was taken |
+| Network | Wi-Fi (Intel AX201), `NetworkCostType = Unrestricted` — **not metered** |
+| Session elevation | **Elevated**, `IsInRole(Administrator)` true, user `MSI\saket`, **checked live in this session** rather than carried forward. An earlier attempt in a non-elevated session returned exit 4 from `nvidia-smi -lgc` and changed nothing; the session was restarted elevated before any timed run |
+| Thread placement | Pinned to **logical CPU 2 of 8**, priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST), applied outside every timed bracket by `bench_pin_current_thread` and **recorded as applied** rather than assumed |
+| CPU timer | `QueryPerformanceCounter`, monotonic. Never wall clock. The timed bracket contains `model_prefill` or `model_decode_step` only |
+| Reference oracle environment | The repository `.venv` — Python 3.14.2, torch 2.14.0+cu130, numpy 2.5.3, confirmed **by import**. CPU only, `torch.set_num_threads(1)`, 160 of 160 tensors verified against the inventory |
+| Tokenizer verification environment | `.venv-oracle` — Python 3.12.10, tokenizers 0.23.2, safetensors 0.8.0, confirmed **by import**. Nothing was installed into either frozen environment |
+| Ordering of correctness against timing | The correctness gate ran **BEFORE** any timed run and the oracle process had **exited** before the first timed bracket. It holds the weight set in numpy and again in torch, over a gigabyte resident, so an overlap would have changed the thing being measured |
+| CPU frequency telemetry | The committed `CpuTelemetrySampler` **REUSED** at the proven Stage 0b / Stage 2 configuration and not rebuilt: interval 0.02 s, requested exclusions logical CPUs 0 and 2, resolved mask **`0xf0`** (allowed 4–7, excluding CPU 2 and its SMT sibling), affinity application confirmed `ok: true` from a previous mask of `0xff`, running in a **separate process**, `sampled_inside_any_timed_bracket: false`. **179,010 samples over 5482.48 s**, 62.0 µs per probe per counter across three live counters, so `3 × 62.0 µs × 179,010 / 5482.48 s` = **0.607% duty of one core**, matching the sampler's own `sampler_duty_cycle_of_one_core` of 0.006073. The trace is a recorded run condition, not a measurement, and is not committed: this stage's declared outputs are three results files and the trace is not one of them |
+| Run wall time | 5482.5 s = **91.4 min** for the probe pass and the timed set together |
+
+**CPU frequency, from the live source only.** The static nominal is not usable and Stage 0b established why.
+
+| Source | n | Min | Median | Max |
+|---|---|---|---|---|
+| `\Processor Information(_Total)\% Processor Performance` | 179,009 | 119.01 | **179.12** | 222.34 |
+| `\Processor Information(_Total)\% Performance Limit` | 179,010 | 100.0 | 100.0 | 100.0 |
+| `\Processor Information(_Total)\Processor Frequency` | 179,010 | 2496.0 | 2496.0 | 2496.0 |
+
+The live source moved across **119% to 222% of nominal** while the static nominal read 2496 MHz throughout, reproducing Stage 0b's finding. `% Performance Limit` held at 100 for every one of the 179,010 samples, so **no CPU performance limit was asserted at any point during the timed set**.
+
+#### Process set, enumerated immediately before the first timed run, named rather than summarised
+
+*Holding a GPU context* (`nvidia-smi --query-compute-apps`, 14 distinct names): `dwm.exe`, `explorer.exe`, `ShellHost.exe`, `ShellExperienceHost.exe`, `StartMenuExperienceHost.exe`, `SearchHost.exe`, `TextInputHost.exe`, `CrossDeviceResume.exe`, `ApplicationFrameHost.exe`, `SystemSettings.exe`, `OmApSvcBroker.exe` (MSI NBFoundation Service), `logioptionsplus_agent.exe`, `msedgewebview2.exe`, and **this session's own editor (`claude.exe`)**.
+
+*Significant CPU consumers* (accumulated CPU seconds, sampled during the run): `MsMpEng` (Windows Defender real-time scanning) 2318 s, `System` 648 s, **`stage2_forward_bench` 394 s** (the measured process itself), `dwm` 125 s, `svchost` (pid 4144) 96 s, `WmiPrvSE` 95 s, `svchost` (pid 8744) 85 s, `explorer` 75 s, `claude` 59 s, three further `svchost` instances 43–51 s, `logioptionsplus_agent` 51 s, `logioptionsplus_updater` 50 s. **222 processes resident** at the start of the timed set, against 236 at this session's checkpoint.
+
+**How the set differs from Stage 2's, and from Stage 0's — which is the set the 4.4% noise floor was measured against.**
+
+- **Riot Vanguard (`vgc`, `vgtray`) — ABSENT.** Resident throughout Stage 0; absent in Stage 0b, Stage 2 and here.
+- **Nahimic — ABSENT.** Resident in Stage 0; closed in Stage 0b, absent in Stage 2. **Present at this session's checkpoint and closed by the operator before the first timed run**; verified absent by name afterwards.
+- **Intel DSA (`DSAService`, `DSATray`, `DSAUpdateService`) — ABSENT.** Same handling as Stage 2: present at the checkpoint, **closed by the operator**, verified absent by name. `esrv`, the Intel Energy Server service, **remained running** and is recorded as present rather than assumed gone.
+- **Logitech Options+ — ABSENT.** Present at the checkpoint under three processes (`logioptionsplus_agent`, `_appbroker`, `_updater`) and **closed by the operator**; verified absent by name before the run. It respawned during the run and appears in the CPU-consumer list above, so it is recorded as **present during part of the timed set** rather than as closed — the same honesty Stage 0b and Stage 2 applied to it.
+- **`msedgewebview2.exe` ×6 — PRESENT**, uncloseable, and equally resident during Stage 0, so a shared condition rather than a difference.
+- **MSI service stack — RUNNING**, by deliberate operator decision (§1 D8, §2 Q9).
+- **Windows Defender — PRESENT**, not excluded or modified, and the largest single CPU consumer on the machine during the run.
+- **This session's editor — PRESENT but reduced**, `claude.exe` ×1 against ×9 at the checkpoint and ×4 during Stage 2.
+
+Net: the set is **lighter than Stage 0's**, lighter than Stage 2's on the editor count and on Logitech, and **heavier than none of them**. A floor measured under heavier load stays conservative under lighter load, so the 4.4% figure remains safe to use. **The 4.4% noise floor is NOT re-derived, adjusted or restated here** — this stage did not re-run the full microbenchmark suite and therefore cannot re-derive it (`PERSISTENT.md` §8 **W5**, whose Status this stage does not change).
+
+#### Process set as an uncontrolled variable — a limitation this stage found in its own regression check
+
+The regression comparison gates on the prompt set, on both sides being VALID, and on the substantive fingerprint fields. **The process set is none of those**, and the environment fingerprint has no process-set field. The one comparison that survived the gates this session — the isolated GEMM at N = 768 — therefore compared across a materially changed process set and reported an 11.363% improvement for which **no code change exists**. The check behaved exactly as specified; the specification does not cover this condition. Recorded here rather than papered over, and carried to Stage 4 in §7.
+
+#### D2 — the numerical tolerance, RESOLVED
+
+**`D2_MAX_ABS_LOGIT_DIFF = 6e-03`**, an elementwise ABSOLUTE difference in logit units. The full statement of form, application rule and arithmetic is in `BENCHMARK_PROTOCOL.md` §5, which is the authoritative copy; what follows is the measurement it rests on.
+
+The gate figure is the maximum elementwise absolute difference over the **full logit vector at every position** of a prefill, float32 on both sides. `gpt2_tool --dump-logits` writes logits for **every** position (8-byte magic `TIE2LOGI`, int32 positions, int32 vocab_size, then `positions × vocab_size` float32 in row order), so both bounds below are measured over the whole prefill and not over a subset.
+
+**Measured at the four D3 lengths**, results file `bench/results/stage3/stage3_correctness.json`, engine `gpt2_tool` with `--cproj as-stored`, oracle `reference/reference_impl.py`:
+
+| D3 length | Max abs divergence | RMS abs | Max rel | Elements below the `|ref|+1e-6` floor | Min reference top-1/top-2 margin | Position | Median margin | Margin ÷ divergence | Top-1 agreement |
+|---|---|---|---|---|---|---|---|---|---|
+| L = 16 | 3.967285e-04 | 7.73904e-05 | 8.69579e-06 | 0 | 5.915833e-02 | 13 | 0.57100 | 149.12x | 16 of 16 |
+| L = 32 | 4.272461e-04 | 6.86042e-05 | 8.69579e-06 | 0 | **7.812500e-03** | 11 | 0.58576 | 18.29x | 32 of 32 |
+| L = 64 | 4.425049e-04 | 6.44972e-05 | 4.39644e-06 | 0 | 4.189301e-02 | 1 | 0.82385 | 94.67x | 64 of 64 |
+| **L = 128** | **7.019043e-04** | 6.93404e-05 | 9.35623e-06 | 0 | 4.366302e-02 | 118 | 0.76766 | 62.21x | 128 of 128 |
+
+**The arithmetic, both conditions evaluated at the longest D3 length.**
+
+- **(a) Lower bound**, from observed divergence: `3 × 7.019043e-04` = **2.105713e-03**.
+- **(b) Upper bound**, from the minimum decision margin: `4.366302e-02 / 3` = **1.455434e-02**.
+- **(d) Window check**: `4.366302e-02 / 7.019043e-04` = **62.21x**, above the required factor of 9 end to end. The window opens; no stop.
+- **(c) Value**: geometric mean `sqrt(2.105713e-03 × 1.455434e-02)` = **5.535997e-03**, rounded to one significant figure as **6e-03**, which keeps both ratios at or above 3.
+- **Achieved safety factors: 8.55x** above the observed divergence (`6e-03 / 7.019043e-04`) and **7.28x** below the minimum margin (`4.366302e-02 / 6e-03`).
+
+**The circularity that remains, and why it is survivable.** The lower bound is a property of **this engine's current divergence** and moves whenever the arithmetic is reassociated — Stage 5's blocking rewrite will produce its own figure. The upper bound is a property of the **reference alone**, and no change to the engine can move it. That asymmetry is why the upper bound is the one that makes the check meaningful: a threshold justified only against the thing being measured is justified by its own subject.
+
+**A qualification that travels with the figure.** The minimum margin over the **whole** D3 set is **7.812500e-03 at L = 32**, smaller than at L = 128. The margin therefore does **not** degrade monotonically with length across this set, because the four D3 rows are **independent prose and not nested prefixes**. Stage 2's finding that the minimum margin more than halved between L = 8 and L = 16 was a nested-prefix effect — adding positions to one string can only lower a minimum — and it does not generalise here. Against that set-wide minimum, 6e-03 leaves only **1.30x**. Had the upper bound been taken set-wide the window would be `[2.105713e-03, 2.604167e-03]`, a span of 1.24x, and **no one-significant-figure value lies inside it** (2e-03 fails the lower bound at 2.85x, 3e-03 fails the upper at 2.60x); the set-wide margin-to-divergence factor of 11.13x does still clear condition (d). What protects the gate in practice is that **condition 2 is checked directly rather than inferred**: top-1 agreement was complete at all four lengths.
+
+**Corroboration, not input.** Stage 2 measured 3.1281e-04 at L = 8 and at L = 16 on placeholder inputs. The D3 figures of 3.97e-04 to 7.02e-04 are the same order of magnitude. Unlike Stage 2's two nested lengths, where the maximum divergence did not move at all, divergence here **does** grow slowly with length. The Stage 2 figures entered neither bound.
+
+**Gate result: PASS**, all three conditions. Maximum absolute difference 7.019043e-04 at or below 6e-03; top-1 agreement at every position of all four lengths; greedy sequence matched the reference on `d3_16` over 3 generated tokens (engine and reference both `464, 3329, 4512, 373, 2739, 11, 290, 262, 3859, 5901, 351, 661, 10627, 511, 16860, 13, 198, 198, 1`).
+
+#### D3 — the prompt set, RESOLVED
+
+Committed as `tests/fixtures/benchmark_prompts.tsv`, header labelling it FIXED PROMPT SET, naming D3, the date and both verifying tokenizer versions. Four rows of ordinary English prose, each standing alone and **not** a truncated prefix of another, which is what makes the per-shape M values exact rather than approximate.
+
+| Row | Target | Reference tokenizer (`tokenizers` 0.23.2, `.venv-oracle`) | Committed C tokenizer (`src/tokenizer.c` via `gpt2_tool`) | Counts agree | **Full id sequences agree** |
+|---|---|---|---|---|---|
+| `d3_16` | 16 | 16 | 16 | yes | **yes** |
+| `d3_32` | 32 | 32 | 32 | yes | **yes** |
+| `d3_64` | 64 | 64 | 64 | yes | **yes** |
+| `d3_128` | 128 | 128 | 128 | yes | **yes** |
+
+Subjects, so a reader can tell the rows apart without opening the fixture: `d3_16` a late commuter train and a platform of people checking watches; `d3_32` a library reading room filled with students; `d3_64` a valley road, a river and a farmer's thirty-year crop rotation; `d3_128` a workshop of inherited hand tools on winter evenings. None is tuned to produce good model output and none is adversarial. The Stage 1 round-trip corpus was **not** a candidate — those strings exist to break a tokenizer.
+
+The verification is not a one-off: the timing driver now **re-checks every row's declared count against what the C tokenizer produces on every run** and hard-fails on a mismatch rather than padding or truncating an inexact row into place. The run log above shows all four rows checked at the start of the timed pass.
+
+**Configurations fixed for every later stage:** prefill at L = 16, 32, 64, 128; decode at context c = 32, 64, 128, one step each, using the row of that token count as the context. The decode contexts match Stage 2's exactly so the Stage 4 comparison against the no-cache curve is like for like. **M values produced: 16, 32, 64, 128** for the prefill denominator, plus **M = 1** decode-shaped.
+
+`tests/fixtures/stage2_placeholder_prompts.tsv` is **not modified, not deleted and not relabelled**. Its PLACEHOLDER header is the record that W11 was handled deliberately rather than discovered later.
+
+#### Measurement — the timed set
+
+One run, 2026-10-05, results file `bench/results/stage3/stage3_harness.json` (stage id `stage-3`, 9 records, raw per-sample timings retained). Warmup **25** and **30 samples** for every configuration. **This single timed set is simultaneously the Stage 3 measurement and the W11 Stage 2 re-run** — see the W11 section below for why that is one artifact and not two.
+
+**Time budget, from a measured probe and labelled as a projection.** The harness's own probe pass measured one untimed iteration of each configuration and projected `sum(probe) × (25 + 30)` = **5290 s = 88.2 min**. Actual wall time including the probe pass and the model load was **5482.5 s = 91.4 min**. The projection is a scheduling input, appears nowhere as a latency, and is recorded here only so the 3.6% shortfall against actual is on the record.
+
+**PREFILL** — the head is computed at every position; no KV cache. Prefill and decode are never combined into one figure.
+
+| Configuration | Row | Samples | Median | Min | Max | Std dev | Std dev (% of median) | Construction | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| Prefill, L = 16 | `d3_16` | 30 | **3537.051 ms** | 3514.392 ms | 3565.556 ms | 11.615 ms | 0.328% | single-iteration, R=1, probe 3.771 s | VALID |
+| Prefill, L = 32 | `d3_32` | 30 | **7058.383 ms** | 7032.262 ms | 7191.453 ms | 29.905 ms | 0.424% | single-iteration, R=1, probe 7.219 s | VALID |
+| Prefill, L = 64 | `d3_64` | 30 | **14121.470 ms** | 14095.015 ms | 14420.316 ms | 62.757 ms | 0.444% | single-iteration, R=1, probe 14.319 s | VALID |
+| Prefill, L = 128 | `d3_128` | 30 | 28420.739 ms | 28302.326 ms | 33181.064 ms | 1626.448 ms | **5.723%** | single-iteration, R=1, probe 28.881 s | **INVALID** |
+
+**DECODE** — one decode step, sampled independently at each context, using the D3 row of that token count; the head is computed once; no KV cache.
+
+| Configuration | Row | Samples | Median | Min | Max | Std dev | Std dev (% of median) | Construction | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| Decode step, c = 32 | `d3_32` | 30 | **5925.150 ms** | 5906.286 ms | 6460.867 ms | 99.335 ms | 1.677% | single-iteration, R=1, probe 5.980 s | VALID |
+| Decode step, c = 64 | `d3_64` | 30 | 11858.971 ms | 11803.567 ms | 18595.912 ms | 1889.803 ms | **15.936%** | single-iteration, R=1, probe 11.932 s | **INVALID** |
+| Decode step, c = 128 | `d3_128` | 30 | **23735.411 ms** | 23675.880 ms | 24120.160 ms | 109.544 ms | 0.462% | single-iteration, R=1, probe 24.085 s | VALID |
+
+**ISOLATED GEMM** — the naive matmul alone, carried through unchanged from the Stage 2 driver, reported as its own configuration with its own verdict and never folded into prefill or decode. Operand fill is outside the timed bracket. These records do not depend on the prompt set.
+
+| Configuration | B operand | Samples | Median | Std dev (% of median) | Throughput | Verdict |
+|---|---|---|---|---|---|---|
+| M=32 N=768 K=768 (`attn.c_proj` shape) | 2.25 MiB, inside the 8 MiB L3 | 30 | 21.323 ms | 3.490% | **1.770 GFLOP/s** | VALID |
+| M=32 N=3072 K=768 (`mlp.c_fc` shape) | 9.00 MiB, exceeds the 8 MiB L3 | 30 | 120.753 ms | 1.305% | **1.250 GFLOP/s** | VALID |
+
+**The separation Stage 2 could not make is now measurable.** Stage 2 recorded the N = 3072 configuration as INVALID at 8.212%, and said explicitly that the configuration which would have separated a scalar issue-rate limit from a memory-hierarchy limit was therefore the one that failed. Here **both are VALID**, at 3.490% and 1.305%, and the L3-resident shape runs at 1.770 GFLOP/s against 1.250 GFLOP/s for the shape whose B operand exceeds L3 — a **29.4% throughput drop** for an operand change and nothing else, M and K held fixed. This is reported as a measurement, not as a change against Stage 2: the regression comparison **refused** that pair because the prior side is INVALID, and a refusal is not a licence to compare by eye. Stages 5 and 6 own the interpretation.
+
+#### The two INVALID configurations, and why the expectation about them was wrong
+
+**Both are reported as INVALID. Neither was retried, averaged away, or repaired by a robust statistic.** The harness has no retry path, so no configuration can be re-run into validity by it.
+
+| Configuration | Std dev (% of median) | Samples more than 5% above the median | Largest sample | Excess over median |
+|---|---|---|---|---|
+| Prefill, L = 128 | 5.723% | 7 of 30 | 33181.064 ms | +4760.326 ms (**+16.7%**) |
+| Decode step, c = 64 | 15.936% | 6 of 30 | 18595.912 ms | +6736.941 ms (**+56.8%**) |
+
+**The expectation stated at this session's checkpoint was that the SHORT configurations would fail, and it was wrong.** The reasoning was that Stage 2's prefill at L = 32 was INVALID at 7.031% and that the D3 short configurations run the same implementation at similar and shorter durations. What actually happened is the reverse: L = 16 and L = 32 were the **tightest** configurations in the set at 0.328% and 0.424%, and the two **longest-running** configurations failed. Stating this plainly because an expectation that is quietly dropped after the fact is worse than one that was never written down.
+
+**What the failures actually are.** Both are a small number of **large** events, not a broad widening: six or seven samples of thirty sit more than 5% above the median and the rest are tight. The excesses are **seconds-scale**, 4.8 s and 6.7 s. W3's model is the right *form* — at k = 7 of n = 30 with an event costing 0.167 of the baseline, `100 × 0.167 × sqrt(7×23/(30×29))` = 7.2% against the observed 5.7%; at k = 6 with an event costing 0.568, the same form gives 23.1% against the observed 15.9%, the overshoot in both cases because the events were not all one size. But the **magnitude regime is not W3's**: W3 characterised interruptions of order tens of microseconds against 30–90 µs baselines, and these are multi-second events against 12–28 s baselines. **Batching is not available as a remedy here**, because the per-sample bracket is already 10³ times the 10 ms floor and lengthening it further would multiply an already 91-minute run. The honest position is that these two configurations measured a machine that was doing something else for part of the run, and that the baseline simply does not exist at those two configurations.
+
+**Consequence for the waterfall, stated so Stage 4 cannot miss it: there is no Stage 2 baseline at prefill L = 128 or at decode c = 64.** Later stages must say so rather than compare against a figure that failed its own validity rule.
+
+#### Regression comparison against Stage 2
+
+Compared against `bench/results/stage2/stage2_forward.json`. A REGRESSION is a slowdown of the median exceeding the **4.4%** noise floor (`BENCHMARK_PROTOCOL.md` §4.1, **used and not re-derived**), on a configuration VALID in BOTH files, at the SAME prompt set and the SAME configuration. **Substantive fingerprint differences between the two files: none.**
+
+**Result: no regressions. One comparison performed, eight refused**, and the refusals are the point of the check rather than a failure of it.
+
+| Configuration | Outcome |
+|---|---|
+| `isolated_gemm M=32,N=768,K=768` | **compared**: prior 24.056 ms → current 21.323 ms, **−11.363%**, recorded as an improvement — see the caveat below |
+| `prefill L=16`, `prefill L=128` | REFUSED — the configuration does not appear in the prior file (Stage 2 ran only L = 32 and L = 64) |
+| `prefill L=32` | REFUSED — the prompt sets differ, **and** the prior configuration is INVALID |
+| `prefill L=64`, `decode c=32`, `decode c=128` | REFUSED — the prompt sets differ (prior PLACEHOLDER, current FIXED `d3_*`) |
+| `decode c=64` | REFUSED — the prompt sets differ, **and** the current configuration is INVALID |
+| `isolated_gemm M=32,N=3072,K=768` | REFUSED — the prior configuration is INVALID |
+
+**The caveat on the one comparison that ran, and it is not a small one.** The isolated GEMM records carry no prompt-set annotation, correctly, because the operands are generated internally and the prompt set cannot affect them. The comparison therefore passed every gate the check applies and reported an 11.363% improvement — **for which no code change exists**: nothing in `gemm_naive`, in its flags, or in the matmul interface changed between Stage 2 and Stage 3. The plausible difference is the process set, which is materially lighter here. **No speedup is claimed from this figure and it is not a Stage 3 result.** It is recorded because it shows precisely what regression detection does and does not establish: it detects that two medians differ by more than the floor, and it establishes nothing whatsoever about why.
+
+**What the check structurally cannot catch**, stated in the results file itself: any change smaller than the noise floor. On this machine a real 3% regression is indistinguishable from noise and is reported as *no measurable change* with the floor named.
+
+#### W11 — Stage 2's placeholder baseline, CLOSED
+
+**Route (a) taken**: the committed Stage 2 binary re-run at the fixed D3 prompt set under full protocol conditions. The route was available because the Stage 2 code is committed, the fingerprint is frozen, and the placeholder labelling keeps the two runs distinguishable.
+
+**The one-artifact construction.** The harness's first run drives the Stage 2 timing driver at the D3 prompts and configurations. That single set of timings **is** the Stage 3 measurement and **is** the W11 re-run; it is written once, to `bench/results/stage3/stage3_harness.json`, and cited from both places. Running the same binary twice over the same inputs would have consumed another 91 minutes to produce a second set differing from the first only by noise. Nothing is counted twice: one set of timings, one file, two readers.
+
+**The re-run figures become the waterfall baseline**; the Stage 2 placeholder figures remain in the Stage 2 entry, with their PLACEHOLDER labels untouched, as the historical record of what was measured on inputs no other stage uses. The dated second measurement row is appended inside the Stage 2 entry.
+
+**The driver was re-parameterised, and the timing code was not touched.** `TECHNICAL_SPEC.md` §4 called `bench/stage2_forward_bench.c` "temporary; Stage 3's harness replaces it", which was ambiguous. Resolved as: **the harness replaces it as the top-level ORCHESTRATOR and it remains the timing driver.** It hardcoded the configuration set, read only the fixture's first row, and hardcoded the PLACEHOLDER labelling, so the parameterisation it needed was added: a multi-row fixture loader taking the prompt text from the last tab-separated column (so one parser serves both the Stage 2 and the D3 layouts); `--lengths` and `--contexts`, defaulting to the Stage 2 values so a bare invocation still reproduces Stage 2 exactly; `--out`; `--prompt-set-status` / `--prompt-set-decision` / `--prompt-set-work-item`, defaulting to the Stage 2 values, with `prompt_set_source` now reporting the fixture actually read; `--probe` extended to probe every requested configuration in a parseable form; per-configuration row selection with the exact-count hard fail; and a logits buffer sized from the longest requested configuration. **Not changed:** `bench_run`, the timed bodies, the bracket contents, warmup and sample handling, the statistics, the 5%-of-median validity rule, the drift diagnostic, and every output field that already existed. The W11 re-run therefore ran a **re-parameterised build of the Stage 2 timing driver with identical timing code**. Original source at commit `20e4f4e`; the re-parameterised source is committed with this stage.
+
+#### W12 — the build timestamp inside the fingerprint, CLOSED
+
+**Approach: EXCLUDE and REPORT.** `build_flags.BENCH_BUILD_TIMESTAMP` is removed from the comparison set and reported in a separate provenance block showing the stored and current values side by side, labelled informational with `compared: false` and a stated reason. The comparison set is **26 fields before, 25 after**. `verify` prints that count on every run together with the name of the excluded field, so nothing is silently dropped and a reader of the output can always see what was and was not compared.
+
+**Three constraints held.** The fix is in the compare logic of `verify_fingerprint` only. `bench/results/machine_fingerprint.json` was **not** rewritten, regenerated or refreshed, and the `fingerprint` subcommand — which WRITES the stored file — was never run; confirmed by `git status` reporting the file unmodified. The timestamp is still reported and never silently discarded.
+
+**Post-fix verification, after a clean build: 25 of 25 compared fields clean, 0 differing, exit 0.** Every difference named: none. This is the first clean verify any stage has produced after its own rebuild. `tests/test_machine_state.py` does **not** encode the comparison count of 26, so the one-assertion change contemplated for it **was not required** and the file was not touched.
+
+**The Stage 1 / Stage 2 disagreement: the mechanism is now ESTABLISHED, with the evidence.** `CMakeLists.txt` line 79 evaluates `string(TIMESTAMP TIE_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ" UTC)` and feeds it to the `configure_file` at line 102, so `build/generated/build_info.h` is regenerated at CMake **configure** time, not at compile time; `scripts/build.ps1 -Clean` deletes the build tree and forces a reconfigure. `verify` reads `build_flags` out of whichever build tree is live. A verify run taken **before** a reconfigure therefore sees the previous build's value and matches, and one taken **after** differs. That is sufficient to produce Stage 1's 26 of 26 and Stage 2's 25 of 26 from one check against one stored file, with no inconsistency in the check itself. **What remains unestablished** is *when in its session* Stage 1 ran verify relative to its clean build, which no artifact records; the fix removes the symptom and this session did not establish that specific ordering.
+
+#### W3 — the timing construction, updated and still OPEN for Stage 4
+
+The construction (a) through (f) is written into `bench/harness.py` as a comment block naming W3 and carrying the arithmetic, and every later stage inherits it. Its full text is in that file and in `PERSISTENT.md` §8 W3; the arithmetic is reproduced here because the entry is where a reader checks it.
+
+**The dispersion model.** For n samples of a workload of uninterrupted time B, of which k are hit by one interruption costing 0.5·B, the sample standard deviation as a percentage of the median is `sd% = 50 · sqrt(k(n−k) / (n(n−1)))`. At n = 30, k = 1 that is `50 · sqrt(29/870)` = **9.13%**, roughly twice the 5% limit, agreeing with W3's own `0.5/sqrt(29)` = 9.29% to within the difference between the two ways of writing it. Solving for the 5% limit at k = 1 gives `sd% = 50/sqrt(n)`, so n > 100 — **but that is the wrong question**, because k is not fixed: interruptions arrive at a rate, so k grows with n. With a rate λ and a cost δ, over a bracket of duration T the event count has mean λT and standard deviation `sqrt(λT)`, so `relative sd = δ·sqrt(λT)/T = δ·sqrt(λ/T)`, **which depends on T and not on n**. More samples do not reduce it; n = 30, k = 1 gives 9.1287% against n = 60, k = 2 giving 9.0510%. Checking the form against Stage 0's observed case — B = 30–90 µs, one event in thirty samples costing 0.5·B — gives `0.5·sqrt(1/30)` = 9.13%, reproducing the figure. Batching R iterations into one bracket multiplies T by R and divides the dispersion by `sqrt(R)`: at p = 1/30, R = 10 gives **2.89%** and R = 30 gives **1.67%**. The closed form is executable in the harness as `predicted_dispersion_pct` and asserted in `tests/test_harness.py`, so the arithmetic in this entry is checked by a test rather than only written down.
+
+**The construction in force from here.** 30 samples, never reduced and **never raised as a remedy for dispersion** — the arithmetic above is exactly why raising it is not a remedy. Construction chosen adaptively from one untimed **measured** probe per configuration: at or above a per-sample floor of **10 ms**, the repeated-single-iteration construction; below it, a batched construction with `R = ceil(10 ms / probe)`, reporting the per-iteration cost as the bracket divided by R. The 10 ms floor is chosen so an interruption of the absolute size Stage 0 observed — tens of microseconds — is a fraction of a percent of the bracket rather than half of it. The trade-off is stated wherever the figure appears: a batched sample is an **amortised mean**, so the per-iteration distribution is no longer observable and individual interruption events can no longer be counted or characterised. Under batching a decode step advances the context, so R consecutive steps are R different shapes; the harness records the context **range** and reports an amortised cost over [c, c+R), preferring cache-state restoration outside the bracket where the implementation permits R identical steps, and recording which of the two was done. **The 5%-of-median limit is never loosened**: it is not a parameter, the harness exposes no way to change it, and there is no retry path. Probe, construction, R and effective bracket duration are recorded per configuration.
+
+**Every Stage 3 configuration took the single-iteration path.** Measured probes ran 3.771 s to 28.881 s, all three orders of magnitude above the 10 ms floor, so R = 1 everywhere. **The batched path is therefore BUILT and UNIT-TESTED this stage but NOT EXERCISED by any timed run here**, and the results file records `batched_path_exercised_by_a_timed_run: false`. One further gap is recorded rather than glossed: the harness emits `--repeat R` to the timing command when R > 1, and the Stage 2 timing driver **does not implement that flag**, because adding a batching loop inside its timed bracket would have been a change to timing code this stage was not permitted to make. **Stage 4 is the first stage whose decode steps are fast enough for R > 1 to be selected, and it owns adding the C side of the batched bracket.**
+
+#### W9 — the cuBLAS prefill denominators at the D3 M values, CLOSED
+
+`bench/microbench/cublas_sgemm_ref` re-run **unmodified** at warmup 25 and 30 samples, results file `bench/results/stage3/stage3_cublas_d3.json`. Its M sweep is compiled in as `1, 8, 16, 32, 64, 128, 256, 512, 1024` and cannot be driven from the command line or the environment — **but it already contains every D3 M value and M = 1**, so the binary needed no modification and received none, and the rows that matter are selected afterwards. Its command-line interface is `[warmup] [samples]` only.
+
+K and N were verified against `src/gpt2_tensor_inventory.json` rather than taken from any prompt: `h.*.attn.c_attn.weight` [768, 2304], `h.*.attn.c_proj.weight` [768, 768], `h.*.mlp.c_fc.weight` [768, 3072], `h.*.mlp.c_proj.weight` [3072, 768]. All four matched.
+
+**These are the per-shape prefill denominators later stages quote. W9 requires them per shape and never as one number.**
+
+| Shape | Tensor | M | N | K | Throughput | Median | Std dev (% of median) | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| qkv_projection | `c_attn` | 16 | 2304 | 768 | 391.56 GFLOP/s | 0.144608 ms | 3.609% | VALID |
+| qkv_projection | `c_attn` | 32 | 2304 | 768 | 1113.05 GFLOP/s | 0.101744 ms | 5.580% | **INVALID** |
+| qkv_projection | `c_attn` | 64 | 2304 | 768 | 1281.18 GFLOP/s | 0.176784 ms | 1.600% | VALID |
+| qkv_projection | `c_attn` | 128 | 2304 | 768 | **1786.22 GFLOP/s** | 0.253600 ms | 1.055% | VALID |
+| attn_output_projection | `attn.c_proj` | 16 | 768 | 768 | 377.73 GFLOP/s | 0.049968 ms | 1.499% | VALID |
+| attn_output_projection | `attn.c_proj` | 32 | 768 | 768 | 633.71 GFLOP/s | 0.059568 ms | 14.986% | **INVALID** |
+| attn_output_projection | `attn.c_proj` | 64 | 768 | 768 | 888.29 GFLOP/s | 0.084992 ms | 6.087% | **INVALID** |
+| attn_output_projection | `attn.c_proj` | 128 | 768 | 768 | 1342.80 GFLOP/s | 0.112448 ms | 5.147% | **INVALID** |
+| ffn_up | `mlp.c_fc` | 16 | 3072 | 768 | 424.26 GFLOP/s | 0.177952 ms | 2.484% | VALID |
+| ffn_up | `mlp.c_fc` | 32 | 3072 | 768 | 1096.96 GFLOP/s | 0.137648 ms | 6.527% | **INVALID** |
+| ffn_up | `mlp.c_fc` | 64 | 3072 | 768 | 1692.62 GFLOP/s | 0.178416 ms | 4.071% | VALID |
+| ffn_up | `mlp.c_fc` | 128 | 3072 | 768 | **1944.81 GFLOP/s** | 0.310560 ms | 3.603% | VALID |
+| ffn_down | `mlp.c_proj` | 16 | 768 | 3072 | 498.16 GFLOP/s | 0.151552 ms | 2.224% | VALID |
+| ffn_down | `mlp.c_proj` | 32 | 768 | 3072 | 1089.37 GFLOP/s | 0.138608 ms | 5.297% | **INVALID** |
+| ffn_down | `mlp.c_proj` | 64 | 768 | 3072 | 1417.85 GFLOP/s | 0.212992 ms | 2.219% | VALID |
+| ffn_down | `mlp.c_proj` | 128 | 768 | 3072 | **1975.24 GFLOP/s** | 0.305776 ms | 0.799% | VALID |
+
+**Six of the sixteen D3 rows are INVALID and are reported as INVALID**, concentrated at M = 32 (four of the four shapes) and across the whole of `attn_output_projection`, which is the smallest shape in the set. This is exactly the qualification `BENCHMARK_PROTOCOL.md` §4.1 attaches to the noise floor — small-M GEMM shapes are materially noisier than everything else, and the worst Stage 0 spreads came from the same place. **Where a denominator is INVALID, no denominator exists at that shape and M, and a later stage must say so rather than quote it.**
+
+**The M = 1 decode-shaped rows, labelled as such and used for nothing.** They are not part of the prefill denominator. They are the first fresh evidence anyone has taken on W3's original failure mode since Stage 0.
+
+| Shape | M | N | K | Throughput | Median | Std dev (% of median) | Verdict |
+|---|---|---|---|---|---|---|---|
+| qkv_projection | 1 | 2304 | 768 | 66.46 GFLOP/s | 0.053248 ms | 1.047% | VALID |
+| attn_output_projection | 1 | 768 | 768 | 38.76 GFLOP/s | 0.030432 ms | 2.084% | VALID |
+| ffn_up | 1 | 3072 | 768 | 72.16 GFLOP/s | 0.065392 ms | 4.220% | VALID |
+| ffn_down | 1 | 768 | 3072 | 41.82 GFLOP/s | 0.112832 ms | **50.176%** | **INVALID** |
+
+**Three of four are VALID, which is a weaker result for W3 than Stage 0 produced**, where all five M = 1 shapes were INVALID in at least one of two runs. One shape failed, and it failed hard at 50.176%. W3's own characterisation — a stochastic hit rate rather than a property of any shape — survives: the shape that failed here is not one that failed consistently before. The lighter process set is the obvious candidate difference and **this stage does not establish that it is the cause**. The rows corroborate W3's arithmetic on the GPU side at the sample count the protocol uses, and nothing more is claimed from them.
+
+**Non-monotonicity, reported as an observation with no mechanism proposed.** Eight steps in the sweep go down as M goes up:
+
+| Shape | M step | Throughput | Drop | Both sides VALID |
+|---|---|---|---|---|
+| qkv_projection | 8 → 16 | 415.37 → 391.56 GFLOP/s | 5.7% | no |
+| qkv_projection | 128 → 256 | 1786.22 → 1535.79 GFLOP/s | 14.0% | **yes** |
+| attn_output_projection | 128 → 256 | 1342.80 → 1289.67 GFLOP/s | 4.0% | no |
+| attn_output_projection | 512 → 1024 | 1949.13 → 1556.26 GFLOP/s | 20.2% | **yes** |
+| ffn_up | 8 → 16 | 432.18 → 424.26 GFLOP/s | 1.8% | **yes** |
+| ffn_up | 128 → 256 | 1944.81 → 1561.25 GFLOP/s | 19.7% | **yes** |
+| ffn_down | 128 → 256 | 1975.24 → 1470.17 GFLOP/s | 25.6% | **yes** |
+| ffn_down | 512 → 1024 | 2359.52 → 1589.19 GFLOP/s | 32.6% | no |
+
+The pattern Stage 0 recorded is reproduced and sharpened: **every one of the four shapes falls between M = 128 and M = 256**, and two fall again between 512 and 1024. Stage 0 observed a peak at M = 512 for `ffn_down` falling at M = 1024; that is reproduced here at 2359.52 → 1589.19 GFLOP/s. **The cause remains UNESTABLISHED.** No per-kernel profiling was done and none is proposed here; W9 is closed because recording the denominators per shape is what it asked for, not because the mechanism is now known. Stage 10 takes the explanation further.
+
+#### No Nsight counters, and no headline ratio
+
+**No counters were collected, and the results files say so with the reason.** `BENCHMARK_PROTOCOL.md` §6 requires Nsight Compute counters for GPU stages from **Stage 7 onward**. This stage writes no kernel; the engine it times runs on the CPU, and the cuBLAS binary it re-runs is Stage 0's, already profiled in its own stage. No profiler run was introduced.
+
+**No headline ratio is quoted.** §7 defines the decode headline against measured GPU bandwidth and the prefill headline against cuBLAS at the engine's shapes. This stage's engine runs on the **CPU**, so the cuBLAS figures recorded above are **denominators for later stages and not a ratio for this one**. No speedup is claimed anywhere in this entry; the only cross-stage delta that survived its gates is the isolated GEMM improvement discussed above, which is explicitly not claimed as a result.
+
+#### What this stage established, in one place
+
+- **D2 is `6e-03` absolute**, justified from measurement at the longest D3 length with both conditions' arithmetic and both achieved factors on the record, and with the set-wide margin qualification attached to it permanently.
+- **D3 is four rows at exactly 16, 32, 64 and 128 tokens**, twice verified on counts *and* full id sequences, and re-checked by the timing driver on every run.
+- **The waterfall baseline exists at five of seven configurations.** Prefill 3537.051 / 7058.383 / 14121.470 ms at L = 16/32/64; decode 5925.150 and 23735.411 ms at c = 32 and c = 128. **It does not exist at prefill L = 128 or decode c = 64.**
+- **The fingerprint can now report clean**, 25 of 25, and the one field that made that impossible is reported rather than compared.
+- **The timing construction is fixed for the project**, and its batched half is built, tested and waiting for Stage 4 to supply the C-side bracket.
+- **The per-shape cuBLAS denominators exist at the D3 M values**, with six of sixteen INVALID and named, and the non-monotonicity reproduced and still unexplained.
+- **An expectation was written down before the run and falsified by it** — the short configurations were predicted to fail and were the tightest in the set.
+
+#### What this taught
+
+A tolerance is only as meaningful as the bound that does not depend on the thing being measured: the observed divergence sets a floor that moves with every rewrite, while the reference's own decision margin sets a ceiling that nothing in the implementation can touch. And dispersion is a property of how long each sample takes, not of how many samples are taken — which is why the remedy for a noisy fast measurement is a longer bracket, and why there is no remedy at all for a slow one.
 
 ## Stage 4 — KV cache
 **Status:** not started
