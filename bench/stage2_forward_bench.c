@@ -30,6 +30,35 @@
  * JSON strings and this driver does not fork the writer; the nested
  * "prompt_set" object is written by the correctness script alongside the
  * divergence statistics.
+ *
+ * STAGE 3 AMENDMENT -- PARAMETERISATION ONLY, 2026-10-04. Stage 3 resolved D3
+ * and needed this driver pointed at the fixed prompt set and at the four D3
+ * prefill lengths. Per that stage's DETERMINE #10 the harness WRAPS this driver
+ * as a subprocess rather than replacing it: the timing code stays here, in
+ * bench_common, where it is already unit-tested, and "replaces" means the
+ * harness becomes the top-level ORCHESTRATOR. What changed, and nothing else:
+ *
+ *   - the fixture loader reads EVERY row rather than only the first, and takes
+ *     the prompt text from the LAST tab-separated column, so it reads both the
+ *     Stage 2 placeholder layout (id, intended_use, text) and the D3 layout
+ *     (id, target_tokens, verified_tokens, text) without a second parser;
+ *   - --lengths and --contexts accept the configuration list, defaulting to the
+ *     Stage 2 values so a bare invocation reproduces Stage 2 exactly;
+ *   - --out sets the results file stem, default unchanged;
+ *   - --prompt-set-status / --prompt-set-decision / --prompt-set-work-item
+ *     label the set, defaulting to the Stage 2 PLACEHOLDER values, and
+ *     prompt_set_source now reports the fixture actually read rather than a
+ *     hardcoded path;
+ *   - --probe reports one untimed iteration of EVERY requested configuration,
+ *     in a parseable form, because the harness selects its W3 construction from
+ *     a measured probe per configuration;
+ *   - a row whose target count is declared is CHECKED against what the
+ *     tokenizer produces and the run hard-fails on a mismatch, rather than
+ *     padding or truncating an inexact row into place.
+ *
+ * NOT CHANGED: bench_run, the timed bodies, the bracket contents, the warmup
+ * and sample handling, the statistics, the 5%-of-median validity rule, the
+ * drift diagnostic, and every output field that already existed.
  */
 #include "bench_common.h"
 #include "model.h"
@@ -159,29 +188,100 @@ static void add_drift(slot *s, int n_samples)
             "and never converts an INVALID run into a valid one");
 }
 
-/* Loads the placeholder prompt text: the first data row of the fixture, third
- * tab-separated column. Read once, outside every timed bracket. */
-static int load_placeholder_prompt(const char *path, char *out, size_t cap)
+/* ---------------------------------------------------------- the fixture ---- */
+/* Reads EVERY data row. The prompt text is the LAST tab-separated column, which
+ * is what makes one parser serve both fixture layouts: the Stage 2 placeholder
+ * file is (id, intended_use, text) and the D3 fixed set is (id, target_tokens,
+ * verified_tokens, text). The second column is taken as a declared target token
+ * count when it parses as a positive integer and as "no declared count" when it
+ * does not, which is how a placeholder row keeps its truncate-to-fit behaviour
+ * while a D3 row is held to an exact count. Read once, outside every timed
+ * bracket. */
+#define MAX_ROWS   16
+#define MAX_PROMPT 8192
+
+typedef struct {
+    char     id[64];
+    int      target_tokens;     /* 0 = none declared; truncate to fit */
+    char     text[MAX_PROMPT];
+    int32_t *ids;
+    size_t   n_ids;
+} fixture_row;
+
+static int parse_positive_int(const char *s, int *out)
+{
+    if (!s || !*s) return 0;
+    char *end = NULL;
+    long v = strtol(s, &end, 10);
+    if (end == s || v <= 0) return 0;
+    while (*end == ' ' || *end == '\t') ++end;
+    if (*end != '\0') return 0;
+    *out = (int)v;
+    return 1;
+}
+
+static int load_fixture_rows(const char *path, fixture_row *rows, int cap, int *n_out)
 {
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
-    char line[8192];
+    char line[MAX_PROMPT + 512];
+    int n = 0;
     while (fgets(line, sizeof line, f)) {
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') continue;
-        char *t1 = strchr(line, '\t');
-        if (!t1) continue;
-        char *t2 = strchr(t1 + 1, '\t');
-        if (!t2) continue;
-        char *text = t2 + 1;
-        size_t n = strlen(text);
-        while (n > 0 && (text[n - 1] == '\n' || text[n - 1] == '\r')) text[--n] = '\0';
-        if (n == 0 || n + 1 > cap) { fclose(f); return 0; }
-        memcpy(out, text, n + 1);
-        fclose(f);
-        return 1;
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
+        if (len == 0) continue;
+
+        /* Split on tabs in place. The text is the last field. */
+        char *fields[8];
+        int nf = 0;
+        fields[nf++] = line;
+        for (char *p = line; *p && nf < 8; ++p) {
+            if (*p == '\t') { *p = '\0'; fields[nf++] = p + 1; }
+        }
+        if (nf < 3) continue;                   /* not a data row */
+        if (n >= cap) { fclose(f); return 0; }  /* more rows than slots: a real failure */
+
+        const char *text = fields[nf - 1];
+        if (*text == '\0' || strlen(text) + 1 > MAX_PROMPT) { fclose(f); return 0; }
+        snprintf(rows[n].id, sizeof rows[n].id, "%s", fields[0]);
+        rows[n].target_tokens = 0;
+        parse_positive_int(fields[1], &rows[n].target_tokens);
+        memcpy(rows[n].text, text, strlen(text) + 1);
+        rows[n].ids = NULL;
+        rows[n].n_ids = 0;
+        ++n;
     }
     fclose(f);
-    return 0;
+    *n_out = n;
+    return n > 0;
+}
+
+/* Selects the row that serves a configuration of `tokens` tokens: the row whose
+ * declared target count equals it, else the first row with no declared count,
+ * whose id sequence is then truncated to fit. Returns NULL when neither exists. */
+static fixture_row *row_for(fixture_row *rows, int n, int tokens)
+{
+    for (int i = 0; i < n; ++i)
+        if (rows[i].target_tokens == tokens && rows[i].n_ids >= (size_t)tokens) return &rows[i];
+    for (int i = 0; i < n; ++i)
+        if (rows[i].target_tokens == 0 && rows[i].n_ids >= (size_t)tokens) return &rows[i];
+    return NULL;
+}
+
+/* Parses "16,32,64,128" into out[]. Returns the count, or -1 on a bad list. */
+static int parse_int_list(const char *s, int *out, int cap)
+{
+    int n = 0;
+    while (*s && n < cap) {
+        char *end = NULL;
+        long v = strtol(s, &end, 10);
+        if (end == s || v <= 0) return -1;
+        out[n++] = (int)v;
+        s = end;
+        while (*s == ',' || *s == ' ') ++s;
+    }
+    return (*s == '\0') ? n : -1;
 }
 
 int main(int argc, char **argv)
@@ -190,13 +290,43 @@ int main(int argc, char **argv)
     int samples = 30;           /* section 3: 30 where the budget allows, never below 20 */
     int probe_only = 0;
     const char *fixture = TIE_REPO_DIR "/tests/fixtures/stage2_placeholder_prompts.tsv";
+    const char *out_stem = "stage2_forward";
+    const char *ps_status = "PLACEHOLDER";
+    const char *ps_decision = "D3";
+    const char *ps_work_item = "W11";
+
+    /* Stage 2's own configuration set, which stays the default so that a bare
+     * invocation reproduces Stage 2 exactly. */
+    int lengths[MAX_RECORDS]  = { 32, 64 };          int n_lengths  = 2;
+    int contexts[MAX_RECORDS] = { 32, 64, 128 };     int n_contexts = 3;
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--warmup") && i + 1 < argc)  { warmup  = atoi(argv[++i]); continue; }
         if (!strcmp(argv[i], "--samples") && i + 1 < argc) { samples = atoi(argv[++i]); continue; }
         if (!strcmp(argv[i], "--probe")) { probe_only = 1; continue; }
         if (!strcmp(argv[i], "--fixture") && i + 1 < argc) { fixture = argv[++i]; continue; }
-        fprintf(stderr, "usage: %s [--warmup N] [--samples N] [--probe] [--fixture PATH]\n",
+        if (!strcmp(argv[i], "--out") && i + 1 < argc) { out_stem = argv[++i]; continue; }
+        if (!strcmp(argv[i], "--prompt-set-status") && i + 1 < argc)
+            { ps_status = argv[++i]; continue; }
+        if (!strcmp(argv[i], "--prompt-set-decision") && i + 1 < argc)
+            { ps_decision = argv[++i]; continue; }
+        if (!strcmp(argv[i], "--prompt-set-work-item") && i + 1 < argc)
+            { ps_work_item = argv[++i]; continue; }
+        if (!strcmp(argv[i], "--lengths") && i + 1 < argc) {
+            n_lengths = parse_int_list(argv[++i], lengths, MAX_RECORDS);
+            if (n_lengths < 0) { fprintf(stderr, "bad --lengths list\n"); return 2; }
+            continue;
+        }
+        if (!strcmp(argv[i], "--contexts") && i + 1 < argc) {
+            n_contexts = parse_int_list(argv[++i], contexts, MAX_RECORDS);
+            if (n_contexts < 0) { fprintf(stderr, "bad --contexts list\n"); return 2; }
+            continue;
+        }
+        fprintf(stderr,
+                "usage: %s [--warmup N] [--samples N] [--probe] [--fixture PATH]\n"
+                "          [--lengths L,L,...] [--contexts C,C,...] [--out STEM]\n"
+                "          [--prompt-set-status S] [--prompt-set-decision D]\n"
+                "          [--prompt-set-work-item W]\n",
                 argv[0]);
         return 2;
     }
@@ -209,11 +339,13 @@ int main(int argc, char **argv)
     printf("cpu timer: %s\n", bench_cpu_timer_name());
 
     /* ---- load everything OUTSIDE the timed brackets ---- */
-    char prompt[8192];
-    if (!load_placeholder_prompt(fixture, prompt, sizeof prompt)) {
-        fprintf(stderr, "cannot read the placeholder prompt fixture: %s\n", fixture);
+    static fixture_row rows[MAX_ROWS];
+    int n_rows = 0;
+    if (!load_fixture_rows(fixture, rows, MAX_ROWS, &n_rows)) {
+        fprintf(stderr, "cannot read the prompt fixture: %s\n", fixture);
         return 1;
     }
+    printf("fixture: %s (%d rows, status %s)\n", fixture, n_rows, ps_status);
 
     tokenizer *tok = NULL;
     if (tok_load(TIE_MODEL_DIR "/tokenizer.json", &tok) != TOK_OK) {
@@ -228,44 +360,81 @@ int main(int argc, char **argv)
     if (rc != MODEL_OK) { fprintf(stderr, "model load: %s\n", model_strerror(rc)); return 1; }
     const model_config *cfg = model_config_of(m);
 
-    int32_t *ids = (int32_t *)malloc((strlen(prompt) + 1) * sizeof(int32_t));
-    size_t n_ids = 0;
-    if (tok_encode(tok, (const unsigned char *)prompt, strlen(prompt),
-                   ids, strlen(prompt) + 1, &n_ids) != TOK_OK) {
-        fprintf(stderr, "encode failed\n");
-        return 1;
+    /* Every row is encoded once, here, outside every timed bracket. A row that
+     * declares a target count is CHECKED against it: an inexact row is an error
+     * in the fixture, not something to pad or shorten into place. */
+    for (int i = 0; i < n_rows; ++i) {
+        size_t len = strlen(rows[i].text);
+        rows[i].ids = (int32_t *)malloc((len + 1) * sizeof(int32_t));
+        if (!rows[i].ids) { fprintf(stderr, "out of memory for the id buffer\n"); return 1; }
+        if (tok_encode(tok, (const unsigned char *)rows[i].text, len,
+                       rows[i].ids, len + 1, &rows[i].n_ids) != TOK_OK) {
+            fprintf(stderr, "encode failed for fixture row %s\n", rows[i].id);
+            return 1;
+        }
+        printf("  row %-8s declares %-4d tokens, the committed C tokenizer encodes %zu%s\n",
+               rows[i].id, rows[i].target_tokens, rows[i].n_ids,
+               rows[i].target_tokens == 0 ? "  (no declared count; truncated to fit)" : "");
+        if (rows[i].target_tokens != 0 && rows[i].n_ids != (size_t)rows[i].target_tokens) {
+            fprintf(stderr, "fixture row %s declares %d tokens and encodes to %zu. Not padding "
+                            "and not shortening: fix the fixture.\n",
+                    rows[i].id, rows[i].target_tokens, rows[i].n_ids);
+            return 1;
+        }
     }
-    printf("placeholder prompt encodes to %zu tokens (D3 open, owned by Stage 3; W11)\n", n_ids);
 
-    const int lengths[] = { 32, 64 };
-    const int contexts[] = { 32, 64, 128 };
     const size_t V = (size_t)cfg->vocab_size;
-    size_t max_needed = 128;
-    if (n_ids < max_needed) {
-        fprintf(stderr, "the placeholder prompt is %zu tokens; the longest configuration "
-                        "needs %zu. Not padding and not shortening: fix the fixture.\n",
-                n_ids, max_needed);
-        return 1;
+
+    /* Every requested configuration must have a row that serves it before any
+     * iteration runs, so a missing row fails before the machine is loaded
+     * rather than halfway through a timed set. */
+    size_t max_needed = 0;
+    for (int i = 0; i < n_lengths; ++i) {
+        if (!row_for(rows, n_rows, lengths[i])) {
+            fprintf(stderr, "no fixture row serves a prefill of %d tokens\n", lengths[i]);
+            return 1;
+        }
+        if ((size_t)lengths[i] > max_needed) max_needed = (size_t)lengths[i];
+    }
+    for (int i = 0; i < n_contexts; ++i) {
+        if (!row_for(rows, n_rows, contexts[i])) {
+            fprintf(stderr, "no fixture row serves a decode context of %d tokens\n", contexts[i]);
+            return 1;
+        }
+        if ((size_t)contexts[i] > max_needed) max_needed = (size_t)contexts[i];
     }
 
-    float *logits = (float *)malloc(64 * V * sizeof(float));
+    float *logits = (float *)malloc(max_needed * V * sizeof(float));
     if (!logits) { fprintf(stderr, "out of memory for logits\n"); return 1; }
     model_reserve(m, max_needed);
 
-    /* ---- the time-budget probe: ONE untimed iteration at the shortest
-     *      configuration, so the sample count is chosen from a measured
-     *      iteration cost rather than from a guess ---- */
-    {
-        fwd_ctx c = { m, ids, 32, logits, 32 * V };
+    /* ---- the untimed probe. ONE iteration of EVERY requested configuration,
+     *      because the harness selects its W3 timing construction per
+     *      configuration from a measured probe rather than from an expectation.
+     *      A probe is a scheduling input, NOT a measurement, and is labelled so
+     *      on every line it appears. ---- */
+    for (int i = 0; i < n_lengths; ++i) {
+        fixture_row *r = row_for(rows, n_rows, lengths[i]);
         double t0 = bench_cpu_time_seconds();
-        model_prefill(m, c.ids, c.n, c.logits, c.cap);
+        model_prefill(m, r->ids, (size_t)lengths[i], logits, (size_t)lengths[i] * V);
         double t = bench_cpu_time_seconds() - t0;
-        printf("probe: one untimed prefill at L=32 took %.6f s\n", t);
-        printf("probe: (warmup %d + samples %d) x %.6f s = %.1f s for that configuration\n",
-               warmup, samples, t, (warmup + samples) * t);
+        printf("probe prefill L=%d row=%s seconds=%.6f  (NOT A MEASUREMENT) "
+               "budget=(%d+%d)x=%.1f s\n",
+               lengths[i], r->id, t, warmup, samples, (warmup + samples) * t);
     }
+    for (int i = 0; i < n_contexts; ++i) {
+        fixture_row *r = row_for(rows, n_rows, contexts[i]);
+        double t0 = bench_cpu_time_seconds();
+        model_decode_step(m, r->ids, (size_t)contexts[i], logits, V);
+        double t = bench_cpu_time_seconds() - t0;
+        printf("probe decode c=%d row=%s seconds=%.6f  (NOT A MEASUREMENT) "
+               "budget=(%d+%d)x=%.1f s\n",
+               contexts[i], r->id, t, warmup, samples, (warmup + samples) * t);
+    }
+    fflush(stdout);
     if (probe_only) {
-        model_free(m); tok_free(tok); free(ids); free(logits);
+        model_free(m); tok_free(tok); free(logits);
+        for (int i = 0; i < n_rows; ++i) free(rows[i].ids);
         return 0;
     }
 
@@ -277,10 +446,11 @@ int main(int argc, char **argv)
     snprintf(pinbuf, sizeof pinbuf, "%s", place.detail);
 
     /* ---------------------------------------------------------- PREFILL ---- */
-    for (size_t li = 0; li < sizeof lengths / sizeof *lengths; ++li) {
+    for (int li = 0; li < n_lengths; ++li) {
         int L = lengths[li];
+        fixture_row *row = row_for(rows, n_rows, L);
         slot *s = &slots[n];
-        fwd_ctx c = { m, ids, (size_t)L, logits, (size_t)L * V };
+        fwd_ctx c = { m, row->ids, (size_t)L, logits, (size_t)L * V };
         int ew = 0, es = 0;
         s->stats = bench_run(prefill_body, &c, warmup, samples, s->samples, &ew, &es);
         snprintf(s->configuration, sizeof s->configuration,
@@ -297,10 +467,11 @@ int main(int argc, char **argv)
         add_str(s, "kv_cache", "none -- Stage 4 adds it");
         add_str(s, "causal_mask", "regenerated as a loop bound; the stored mask buffers are not read");
         add_str(s, "attn_c_proj_reading", "as-stored [input, output]");
-        add_str(s, "prompt_set_status", "PLACEHOLDER");
-        add_str(s, "prompt_set_open_decision", "D3");
-        add_str(s, "prompt_set_work_item", "W11");
-        add_str(s, "prompt_set_source", "tests/fixtures/stage2_placeholder_prompts.tsv");
+        add_str(s, "prompt_set_status", ps_status);
+        add_str(s, "prompt_set_open_decision", ps_decision);
+        add_str(s, "prompt_set_work_item", ps_work_item);
+        add_str(s, "prompt_set_source", fixture);
+        add_str(s, "prompt_row_id", row->id);
         add_str(s, "thread_placement", pinbuf);
         add_str(s, "timed_bracket_contains",
                 "model_prefill only; weight load, tokenizer load, tokenization and scratch "
@@ -329,10 +500,11 @@ int main(int argc, char **argv)
     }
 
     /* ----------------------------------------------------------- DECODE ---- */
-    for (size_t ci = 0; ci < sizeof contexts / sizeof *contexts; ++ci) {
+    for (int ci = 0; ci < n_contexts; ++ci) {
         int C = contexts[ci];
+        fixture_row *row = row_for(rows, n_rows, C);
         slot *s = &slots[n];
-        fwd_ctx c = { m, ids, (size_t)C, logits, V };
+        fwd_ctx c = { m, row->ids, (size_t)C, logits, V };
         int ew = 0, es = 0;
         s->stats = bench_run(decode_body, &c, warmup, samples, s->samples, &ew, &es);
         snprintf(s->configuration, sizeof s->configuration,
@@ -350,10 +522,11 @@ int main(int argc, char **argv)
         add_str(s, "kv_cache", "none -- a decode step re-runs the whole forward pass");
         add_str(s, "causal_mask", "regenerated as a loop bound; the stored mask buffers are not read");
         add_str(s, "attn_c_proj_reading", "as-stored [input, output]");
-        add_str(s, "prompt_set_status", "PLACEHOLDER");
-        add_str(s, "prompt_set_open_decision", "D3");
-        add_str(s, "prompt_set_work_item", "W11");
-        add_str(s, "prompt_set_source", "tests/fixtures/stage2_placeholder_prompts.tsv");
+        add_str(s, "prompt_set_status", ps_status);
+        add_str(s, "prompt_set_open_decision", ps_decision);
+        add_str(s, "prompt_set_work_item", ps_work_item);
+        add_str(s, "prompt_set_source", fixture);
+        add_str(s, "prompt_row_id", row->id);
         add_str(s, "thread_placement", pinbuf);
         add_str(s, "timed_bracket_contains", "model_decode_step only");
         add_str(s, "tag", "measured");
@@ -459,16 +632,17 @@ int main(int argc, char **argv)
         }
     }
 
-    if (bench_write_results(NULL, "stage2_forward", recs, n) != 0) {
+    if (bench_write_results(NULL, out_stem, recs, n) != 0) {
         fprintf(stderr, "writing the results file FAILED\n");
         return 1;
     }
     char dir[512];
-    printf("results written: %s/stage2_forward.json (stage id \"%s\", %d records)\n",
-           bench_default_results_dir(dir, sizeof dir), bench_stage_id(), n);
+    printf("results written: %s/%s.json (stage id \"%s\", %d records)\n",
+           bench_default_results_dir(dir, sizeof dir), out_stem, bench_stage_id(), n);
 
     bench_restore_current_thread();
-    free(logits); free(ids);
+    free(logits);
+    for (int i = 0; i < n_rows; ++i) free(rows[i].ids);
     model_free(m);
     tok_free(tok);
 

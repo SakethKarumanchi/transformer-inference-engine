@@ -1,0 +1,41 @@
+# benchmark_prompts.tsv -- THE FIXED PROMPT SET. NOT A PLACEHOLDER.
+#
+# STATUS: FIXED. Decision D3 (PERSISTENT.md section 1) -- the benchmark prompt set and token
+# counts -- was RESOLVED here on 2026-10-04 by Stage 3 and is held constant for every later
+# stage by BENCHMARK_PROTOCOL.md section 4. Changing a row, its text or its token count voids
+# every cross-stage comparison made under it.
+#
+# THE FOUR COUNTS ARE 16, 32, 64 AND 128 TOKENS. They span a factor of eight, which is enough
+# for the length dependence of a later stage's kernel to show; 128 sits well inside n_ctx 1024
+# with room for the decode configurations to extend past it; and the four counts are the M
+# values the per-shape cuBLAS prefill denominator is quoted at (PERSISTENT.md section 8 W9).
+#
+# EACH ROW STANDS ALONE AND ENCODES TO EXACTLY ITS TARGET COUNT. The rows are NOT truncated
+# prefixes of one long string -- that is what makes the per-shape M values exact rather than
+# approximate. A row that encodes to a count other than its label is an error, not an
+# approximation, and the harness hard-fails on it rather than padding or truncating.
+#
+# ORDINARY ENGLISH PROSE. Not tuned to produce good model output, not adversarial, not selected
+# to flatter anything; whatever the engine generates from these is reported, repetition
+# included. The Stage 1 round-trip corpus (tests/fixtures/tokenizer_roundtrip_corpus.tsv) is
+# explicitly NOT a candidate -- those strings exist to break a tokenizer.
+#
+# VERIFIED TWICE, AND THE TWO AGREE. Count and full id sequence, by two independent
+# tokenizers:
+#   reference tokenizer : tokenizers 0.23.2 under .venv-oracle (Python 3.12.10)
+#   committed C tokenizer : src/tokenizer.c, through the built gpt2_tool
+# A disagreement between them is a stop-and-report, never reconciled by choosing one.
+#
+# tests/fixtures/stage2_placeholder_prompts.tsv is NOT superseded, NOT modified and NOT
+# relabelled. Its PLACEHOLDER header is the record that W11 was handled deliberately rather
+# than discovered later.
+#
+# Line endings: .gitattributes already forces `*.tsv text eol=lf`; this file inherits that rule
+# and needs no second one.
+#
+# Columns, tab separated: id, target_tokens, verified_tokens, text
+#
+d3_16	16	16	The morning train was late, and the platform filled with people checking their watches.
+d3_32	32	32	The library on the corner opened at nine, and by ten the reading room was full of students who had come for the quiet rather than for the books themselves.
+d3_64	64	64	A narrow road climbed out of the village and followed the river for three miles before turning inland. The farmer who kept the last field before the bridge had planted the same two crops in rotation for thirty years, and he could tell from the colour of the water in spring whether the harvest would come early or late that year.
+d3_128	128	128	The workshop at the back of the house held two benches, a vice bolted to the heavier one, and a wall of hand tools arranged by size rather than by purpose. He had inherited most of them from his grandfather, who had worked on wooden boats before the yard closed, and a few of the chisels still carried initials stamped into the handles. On winter evenings he would sharpen whatever needed sharpening, not because there was work waiting but because the sound of the stone was companionable. The radio played whatever the station chose. By eleven the room was warm enough to work without a coat, and he would stay another hour.

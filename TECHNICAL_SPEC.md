@@ -118,7 +118,10 @@ Build only after Stage 12. Each is independently valuable; none is required for 
     harness.py           # Stage 3
     correctness.py
     profile.py           # Nsight Compute wrapper
-    stage2_forward_bench.c   # Stage 2, temporary; Stage 3's harness replaces it
+    stage2_forward_bench.c   # Stage 2 timing driver; Stage 3's harness replaces it as
+                             # the ORCHESTRATOR and wraps it as a subprocess. The timing
+                             # code stays here and in bench_common.h, where it is already
+                             # unit-tested; Stage 3 added parameterisation only
     results/
   model/
     perf_model.py        # Stage 10
@@ -127,7 +130,9 @@ Build only after Stage 12. Each is independently valuable; none is required for 
   reference/
     reference_impl.py
   tests/              # one test per source file, registered with CTest
-    fixtures/         # committed test inputs (Stage 1 corpora, Stage 2 placeholder prompts)
+    fixtures/         # committed test inputs (Stage 1 corpora, Stage 2 placeholder prompts,
+                      # and benchmark_prompts.tsv -- the Stage 3 D3 FIXED prompt set at
+                      # exactly 16, 32, 64 and 128 tokens, held constant from Stage 3 on)
   scripts/            # build.ps1 and the CMake helpers
   models/             # downloaded weights and tokenizer artifacts; gitignored, never committed
   dashboard/

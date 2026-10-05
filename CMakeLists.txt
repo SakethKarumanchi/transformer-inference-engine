@@ -396,3 +396,20 @@ else()
     message(WARNING "Python 3 interpreter not found; the Stage 2 reference test is NOT "
                     "registered and the suite is incomplete.")
 endif()
+
+# ---- Stage 3: the benchmark harness and the correctness gate -----------------
+# Both run under the project .venv, which carries numpy and the torch the oracle
+# needs. Registered with the same pattern and the same 5-minute per-test cap the
+# earlier Python tests use. Neither test invokes the real engine or the oracle:
+# both work from synthetic arrays and a stub timing command, which is what keeps
+# them inside the cap. Each test states that reduction in its own header.
+if(Python3_Interpreter_FOUND)
+    foreach(pytest test_correctness test_harness)
+        add_test(NAME ${pytest}
+                 COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/${pytest}.py")
+        set_tests_properties(${pytest} PROPERTIES TIMEOUT 300)   # 5-minute per-test cap
+    endforeach()
+else()
+    message(WARNING "Python 3 interpreter not found; the Stage 3 harness and correctness "
+                    "tests are NOT registered and the suite is incomplete.")
+endif()
