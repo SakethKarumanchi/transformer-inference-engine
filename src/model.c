@@ -30,6 +30,40 @@
  *    carries the vocabulary size against the embedding width, so the head is
  *    wte.weight itself -- the same allocation, not a copy of it.
  *
+ * STAGE 4 AMENDMENT, 2026-10-05 -- THE KV CACHE, BEHIND A RUNTIME SWITCH.
+ *
+ * Two paths now exist and both are kept. MODEL_PATH_NOCACHE is the default and
+ * is the Stage 2 code above, unchanged: no cache is allocated, nothing is
+ * stored, no branch runs inside an inner loop. MODEL_PATH_CACHE makes prefill
+ * store every position's keys and values per layer, and gives a decode step a
+ * path that processes ONE token and attends over the stored positions.
+ *
+ * WHY THE TWO PATHS AGREE BIT FOR BIT, structurally rather than by tolerance.
+ * gemm_naive computes each output row from one single-float accumulator walking
+ * k upward, and no row of any GEMM here depends on another row, so the rows a
+ * cached step computes are the rows prefill computes for the same position.
+ * Attention is the only place where that could break, and it does not:
+ *   - the cache's layout IS the activation layout, so key row j of a layer
+ *     holds the same n_embd floats, in the same order, that m->qkv row j holds
+ *     at offset n_embd, and a head is the same 64-float slice at stride
+ *     n_embd rather than at stride 3*n_embd;
+ *   - the score row for the new position reduces over j = 0..c-1 in increasing
+ *     j, which is what gemm_naive_bt does for row c-1 of the full square;
+ *   - the softmax runs over exactly the c entries the no-cache path's row c-1
+ *     runs over, with the same maximum subtracted in the same order;
+ *   - the weighted sum reduces over the same j in the same increasing order.
+ * The no-cache path's LAST row never has a masked tail -- at t = T-1 every
+ * j <= t -- so for the position a decode step produces there is not even a
+ * zeroed upper triangle to differ about.
+ *
+ * WHAT THE CACHED PATH DOES NOT DO. It introduces no arithmetic routine of its
+ * own: every matmul still goes through m->gemm, the same two functions, with
+ * M = 1. The attention it performs is one query row over c keys, so there is no
+ * discarded upper triangle and its performed-FLOP count is 36,864*c per step
+ * against the no-cache path's full-square 36,864*c^2 (PERSISTENT.md section 8,
+ * W13). No loop is reordered, blocked or vectorised here; those are Stages 5
+ * and 6 and taking any of them now would consume their measured gain.
+ *
  * Every architecture value is read from models/gpt2/config.json. Every tensor's
  * shape, dtype, absolute file offset and byte length is read from
  * src/gpt2_tensor_inventory.json and checked against the weight file's own
@@ -182,6 +216,8 @@ typedef struct {
 struct model {
     model_config        cfg;
     model_cproj_reading cproj_reading;
+    model_decode_path   decode_path;   /* Stage 4; MODEL_PATH_NOCACHE by default */
+    kv_cache           *kv;            /* allocated LAZILY by model_kv_reserve   */
     const gemm_impl    *gemm;
 
     float *wte;      /* [vocab_size, n_embd] -- token embedding AND the tied head */
@@ -448,11 +484,56 @@ void model_free(model *m)
     }
     free(m->records);
     free(m->x); free(m->xb); free(m->qkv); free(m->attn); free(m->scores); free(m->ff);
+    kv_cache_destroy(m->kv);
     free(m);
 }
 
 const model_config *model_config_of(const model *m) { return m ? &m->cfg : NULL; }
 model_cproj_reading model_cproj_reading_of(const model *m) { return m->cproj_reading; }
+
+/* ---- Stage 4: the decode-path switch and the cache's state -------------- */
+
+void model_set_decode_path(model *m, model_decode_path p)
+{
+    if (m && (p == MODEL_PATH_NOCACHE || p == MODEL_PATH_CACHE)) m->decode_path = p;
+}
+
+model_decode_path model_decode_path_of(const model *m)
+{
+    return m ? m->decode_path : MODEL_PATH_NOCACHE;
+}
+
+/* LAZY, and outside every timed bracket. A model left on the no-cache path that
+ * never calls this holds no cache at all, which is why the no-cache path's
+ * resident cache footprint is exactly zero rather than merely unused. */
+model_status model_kv_reserve(model *m, size_t capacity)
+{
+    if (!m) return MODEL_ERR_ARG;
+    if (capacity == 0) return MODEL_ERR_ARG;
+    if ((int)capacity > m->cfg.n_ctx) return MODEL_ERR_RANGE;
+    if (m->kv && kv_cache_capacity(m->kv) >= (int)capacity) return MODEL_OK;
+
+    kv_cache *fresh = NULL;
+    kv_status ks = kv_cache_create(m->cfg.n_layer, m->cfg.n_embd, (int)capacity, &fresh);
+    if (ks == KV_ERR_NOMEM) return MODEL_ERR_NOMEM;
+    if (ks != KV_OK) return MODEL_ERR_ARG;
+    kv_cache_destroy(m->kv);
+    m->kv = fresh;
+    return MODEL_OK;
+}
+
+size_t model_kv_footprint_bytes(const model *m) { return m ? kv_cache_footprint_bytes(m->kv) : 0u; }
+int    model_kv_capacity(const model *m)        { return m ? kv_cache_capacity(m->kv) : 0; }
+int    model_kv_length(const model *m)          { return m ? kv_cache_length(m->kv) : 0; }
+const kv_cache *model_kv_cache_of(const model *m){ return m ? m->kv : NULL; }
+
+model_status model_kv_set_length(model *m, int length)
+{
+    if (!m || !m->kv) return MODEL_ERR_ARG;
+    kv_status ks = kv_cache_set_length(m->kv, length);
+    if (ks == KV_ERR_CAPACITY) return MODEL_ERR_CAPACITY;
+    return ks == KV_OK ? MODEL_OK : MODEL_ERR_ARG;
+}
 void model_set_gemm(model *m, const gemm_impl *impl) { if (m && impl) m->gemm = impl; }
 const gemm_impl *model_gemm_of(const model *m) { return m ? m->gemm : NULL; }
 size_t model_tensor_record_count(const model *m) { return m ? m->n_records : 0; }
@@ -570,10 +651,21 @@ static model_status forward_blocks(model *m, const int32_t *ids, size_t T)
     const int E3 = 3 * E, E4 = 4 * E;
     const float scale = (float)(1.0 / sqrt((double)D));
 
+    /* The switch, read ONCE per call into a local, outside every loop. In
+     * no-cache mode `use_cache` is 0 and the single test below is the whole
+     * cost of the switch in this function: twelve tests per call, none of them
+     * inside an inner loop and none of them per token or per head. */
+    const int use_cache = (m->decode_path == MODEL_PATH_CACHE);
+
     if (T == 0) return MODEL_ERR_ARG;
     if ((int)T > c->n_ctx) return MODEL_ERR_RANGE;
     for (size_t t = 0; t < T; ++t)
         if (ids[t] < 0 || ids[t] >= c->vocab_size) return MODEL_ERR_RANGE;
+    /* Refused before any arithmetic, not halfway through the layers. */
+    if (use_cache) {
+        if (!m->kv) return MODEL_ERR_ARG;
+        if ((int)T > kv_cache_capacity(m->kv)) return MODEL_ERR_CAPACITY;
+    }
 
     /* embeddings: token + learned absolute position */
     for (size_t t = 0; t < T; ++t) {
@@ -594,6 +686,21 @@ static model_status forward_blocks(model *m, const int32_t *ids, size_t T)
         m->gemm->mul((int)T, E3, E, m->xb, E, ly->c_attn_w, E3, m->qkv, E3);
         for (size_t t = 0; t < T; ++t)
             for (int j = 0; j < E3; ++j) m->qkv[t * E3 + j] += ly->c_attn_b[j];
+
+        /* STAGE 4, CACHE MODE ONLY. This layer's keys and values for every
+         * position, stored AFTER the bias is added -- the cache holds what
+         * attention reads, not an intermediate. Stores only: no arithmetic is
+         * performed here and the logits are unaffected. The source rows are the
+         * K and V thirds of the fused QKV activation, and the destination row is
+         * the same n_embd floats in the same order, which is what makes a
+         * cached read and a recomputed read the same element. */
+        if (use_cache) {
+            for (size_t t = 0; t < T; ++t)
+                if (kv_cache_write(m->kv, l, (int)t,
+                                   m->qkv + t * E3 + (size_t)E,
+                                   m->qkv + t * E3 + 2 * (size_t)E) != KV_OK)
+                    return MODEL_ERR_CAPACITY;
+        }
 
         for (int h = 0; h < H; ++h) {
             const float *q = m->qkv + (size_t)h * D;
@@ -648,6 +755,10 @@ static model_status forward_blocks(model *m, const int32_t *ids, size_t T)
     for (size_t t = 0; t < T; ++t)
         layernorm(m->x + t * E, m->ln_f_w, m->ln_f_b, E, c->layer_norm_epsilon,
                   m->xb + t * E);
+
+    /* The cache now holds positions 0..T-1 for every layer, so the length is T
+     * and a cached decode step can continue from it. */
+    if (use_cache) kv_cache_set_length(m->kv, (int)T);
     return MODEL_OK;
 }
 
@@ -670,10 +781,128 @@ model_status model_prefill(model *m, const int32_t *ids, size_t T,
     return MODEL_OK;
 }
 
+/* ONE CACHED DECODE STEP. Positions 0..T-2 are already in the cache; this runs
+ * token T-1 alone through the twelve blocks, appends its keys and values, and
+ * attends over all T positions.
+ *
+ * SCRATCH: row 0 of the activation buffers model_reserve already grew, so the
+ * step allocates nothing. The score row needs T floats and m->scores holds
+ * scratch_tokens^2, which covers it for every T the caller has reserved.
+ *
+ * THE REDUCTION ORDER IS PREFILL'S, ELEMENT FOR ELEMENT. See the file header
+ * for why that makes the agreement structural. */
+static model_status forward_one_cached(model *m, int32_t id, size_t T)
+{
+    const model_config *c = &m->cfg;
+    const int E = c->n_embd, H = c->n_head, D = c->head_dim;
+    const int E3 = 3 * E, E4 = 4 * E;
+    const float scale = (float)(1.0 / sqrt((double)D));
+    const size_t pos = T - 1;
+
+    if (id < 0 || id >= c->vocab_size) return MODEL_ERR_RANGE;
+
+    /* embedding of the one new token, at its own position */
+    {
+        const float *we = m->wte + (size_t)id * E;
+        const float *pe = m->wpe + pos * E;
+        for (int i = 0; i < E; ++i) m->x[i] = we[i] + pe[i];
+    }
+
+    for (int l = 0; l < c->n_layer; ++l) {
+        model_layer *ly = &m->layers[l];
+
+        layernorm(m->x, ly->ln_1_w, ly->ln_1_b, E, c->layer_norm_epsilon, m->xb);
+
+        m->gemm->mul(1, E3, E, m->xb, E, ly->c_attn_w, E3, m->qkv, E3);
+        for (int j = 0; j < E3; ++j) m->qkv[j] += ly->c_attn_b[j];
+
+        /* Appended BEFORE attention, so the new position is among the keys this
+         * step attends over -- and appended at row T-1, which is where the score
+         * row's last reduction step reads it. */
+        if (kv_cache_write(m->kv, l, (int)pos,
+                           m->qkv + (size_t)E, m->qkv + 2 * (size_t)E) != KV_OK)
+            return MODEL_ERR_CAPACITY;
+
+        for (int h = 0; h < H; ++h) {
+            const float *q  = m->qkv + (size_t)h * D;
+            const float *kc = kv_cache_keys(m->kv, l)   + (size_t)h * D;
+            const float *vc = kv_cache_values(m->kv, l) + (size_t)h * D;
+
+            /* One query row against T cached key rows. The cache's row stride is
+             * n_embd where the activation buffer's was 3*n_embd; the 64-float
+             * head slice and the reduction over D are otherwise identical. No
+             * mask and no upper triangle: every one of the T positions is at or
+             * before this one, which is what causality means for the last row. */
+            m->gemm->mul_bt(1, (int)T, D, q, E3, kc, E, m->scores, (int)T);
+            for (size_t j = 0; j < T; ++j) m->scores[j] *= scale;
+            double s = softmax_inplace(m->scores, (int)T);
+            if (m->collect_attn_stats) {
+                if (m->attn_rows == 0) { m->attn_rowsum_min = m->attn_rowsum_max = s; }
+                else {
+                    if (s < m->attn_rowsum_min) m->attn_rowsum_min = s;
+                    if (s > m->attn_rowsum_max) m->attn_rowsum_max = s;
+                }
+                ++m->attn_rows;
+            }
+
+            m->gemm->mul(1, D, (int)T, m->scores, (int)T, vc, E,
+                         m->attn + (size_t)h * D, E);
+        }
+
+        m->gemm->mul(1, E, E, m->attn, E, ly->attn_proj_w, E, m->xb, E);
+        for (int i = 0; i < E; ++i) m->x[i] += m->xb[i] + ly->attn_proj_b[i];
+
+        layernorm(m->x, ly->ln_2_w, ly->ln_2_b, E, c->layer_norm_epsilon, m->xb);
+
+        m->gemm->mul(1, E4, E, m->xb, E, ly->c_fc_w, E4, m->ff, E4);
+        for (int j = 0; j < E4; ++j) m->ff[j] += ly->c_fc_b[j];
+        gelu_new_inplace(m->ff, (size_t)E4);
+
+        m->gemm->mul(1, E, E4, m->ff, E4, ly->mlp_proj_w, E, m->xb, E);
+        for (int i = 0; i < E; ++i) m->x[i] += m->xb[i] + ly->mlp_proj_b[i];
+    }
+
+    layernorm(m->x, m->ln_f_w, m->ln_f_b, E, c->layer_norm_epsilon, m->xb);
+    kv_cache_set_length(m->kv, (int)T);
+    return MODEL_OK;
+}
+
+model_status model_decode_step_cached(model *m, const int32_t *ids, size_t T,
+                                      float *logits, size_t cap)
+{
+    if (!m || !ids || !logits) return MODEL_ERR_ARG;
+    if (cap < (size_t)m->cfg.vocab_size) return MODEL_ERR_CAPACITY;
+    if (T == 0) return MODEL_ERR_ARG;
+    if ((int)T > m->cfg.n_ctx) return MODEL_ERR_RANGE;
+
+    /* Every refusal below happens BEFORE any arithmetic. A step run against a
+     * cache holding the wrong number of positions would return a plausible
+     * wrong answer, which is worse than an error code. */
+    if (!m->kv) return MODEL_ERR_ARG;
+    if ((int)T > kv_cache_capacity(m->kv)) return MODEL_ERR_CAPACITY;
+    if (kv_cache_length(m->kv) != (int)(T - 1)) return MODEL_ERR_ARG;
+
+    model_status rc = model_reserve(m, T);
+    if (rc != MODEL_OK) return rc;
+    rc = forward_one_cached(m, ids[T - 1], T);
+    if (rc != MODEL_OK) return rc;
+
+    /* The head once, at this one position -- the same call prefill makes for its
+     * last row and the same call the no-cache decode step makes. */
+    m->gemm->mul_bt(1, m->cfg.vocab_size, m->cfg.n_embd,
+                    m->xb, m->cfg.n_embd, m->wte, m->cfg.n_embd,
+                    logits, m->cfg.vocab_size);
+    return MODEL_OK;
+}
+
 model_status model_decode_step(model *m, const int32_t *ids, size_t T,
                                float *logits, size_t cap)
 {
     if (!m || !ids || !logits) return MODEL_ERR_ARG;
+    /* The switch, read once per call. Under MODEL_PATH_NOCACHE everything below
+     * is the Stage 2 path unchanged. */
+    if (m->decode_path == MODEL_PATH_CACHE)
+        return model_decode_step_cached(m, ids, T, logits, cap);
     if (cap < (size_t)m->cfg.vocab_size) return MODEL_ERR_CAPACITY;
     model_status rc = model_reserve(m, T);
     if (rc != MODEL_OK) return rc;

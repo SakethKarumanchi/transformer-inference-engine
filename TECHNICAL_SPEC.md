@@ -109,6 +109,10 @@ Build only after Stage 12. Each is independently valuable; none is required for 
   .gitattributes      # Stage 2: fixtures compared byte for byte are eol=lf
   src/
     main.c  model.c/h  tokenizer.c/h  safetensors.c/h
+    kv_cache.c/h         # Stage 4: the per-layer key/value cache. Storage only -- it
+                         # performs no arithmetic and does not include the GEMM; the
+                         # cache's layout IS the activation layout, so the cached and
+                         # recomputed paths read the same element in the same order
     gpt2_tensor_inventory.json   # Stage 1, committed; Stage 2 consumes it
     gemm/    gemm.h  gemm_naive.c  gemm_blocked.c  gemm_simd.c
     cuda/    forward.cu  gemm_naive.cu  gemm_tiled.cu
@@ -121,7 +125,12 @@ Build only after Stage 12. Each is independently valuable; none is required for 
     stage2_forward_bench.c   # Stage 2 timing driver; Stage 3's harness replaces it as
                              # the ORCHESTRATOR and wraps it as a subprocess. The timing
                              # code stays here and in bench_common.h, where it is already
-                             # unit-tested; Stage 3 added parameterisation only
+                             # unit-tested; Stage 3 added parameterisation only, and
+                             # Stage 4 added the engine-path flags (--prefill-path,
+                             # --decode-path), an ordered --configs list so a cache
+                             # configuration and its no-cache control are adjacent in
+                             # time, and --repeat, which accepts 1 and REFUSES N > 1
+                             # because the batched C bracket is not implemented (W3)
     results/
   model/
     perf_model.py        # Stage 10

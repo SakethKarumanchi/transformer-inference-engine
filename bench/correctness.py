@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import struct
@@ -70,7 +71,7 @@ FINGERPRINT = os.path.join(REPO, "bench", "results", "machine_fingerprint.json")
 BUILD_INFO = os.path.join(REPO, "build", "generated", "build_info.h")
 GIT_INFO = os.path.join(REPO, "build", "generated", "git_info.h")
 D3_FIXTURE = os.path.join(REPO, "tests", "fixtures", "benchmark_prompts.tsv")
-DEFAULT_OUT = os.path.join(REPO, "bench", "results", "stage3", "stage3_correctness.json")
+DEFAULT_OUT = os.path.join(REPO, "bench", "results", "stage4", "stage4_correctness.json")
 
 # The relative-difference denominator floor. A fixed property of the statistic,
 # not a tolerance: it only keeps the relative figure finite where a reference
@@ -93,13 +94,169 @@ def read_tolerance(protocol_path: str = PROTOCOL) -> float:
     """
     with open(protocol_path, "r", encoding="utf-8") as f:
         text = f.read()
-    m = re.search(TOLERANCE_TOKEN + r"\s*=\s*([0-9.eE+-]+)", text)
-    if not m:
+    found = re.findall(TOLERANCE_TOKEN + r"\s*=\s*([0-9.eE+-]+)", text)
+    if not found:
         raise ValueError(
             f"{protocol_path} carries no {TOLERANCE_TOKEN} value. BENCHMARK_PROTOCOL.md "
             "section 5 is the only source for the D2 threshold; pass one explicitly only "
             "when deliberately measuring divergence before the threshold exists.")
-    return float(m.group(1))
+    # Stage 4: TWO machine-readable lines is a document that has been amended
+    # without superseding its old value, and picking the first would mean the
+    # gate silently ran against whichever one happened to come first in the file.
+    if len(found) > 1:
+        raise ValueError(
+            f"{protocol_path} carries {len(found)} {TOLERANCE_TOKEN} values ({found}). "
+            "BENCHMARK_PROTOCOL.md section 5 must carry EXACTLY ONE machine-readable "
+            "line; an amendment supersedes the old value in prose and leaves one line.")
+    # The pattern accepts any number of significant figures: Stage 4's re-derived
+    # value is two (2.3e-03) where Stage 3's was one (6e-03).
+    return float(found[0])
+
+
+# ------------------------------------------------- D2 under the corrected rule --
+
+def _values_at_precision(lower: float, upper: float, sig: int) -> list:
+    """Every value with exactly `sig` significant figures lying in [lower, upper]."""
+    if not (lower > 0 and upper > 0) or upper < lower:
+        return []
+    out = set()
+    e_lo = math.floor(math.log10(lower)) - (sig - 1)
+    e_hi = math.floor(math.log10(upper)) - (sig - 1)
+    for e in range(e_lo, e_hi + 1):
+        step = 10.0 ** e
+        m_min = max(int(math.ceil(lower / step - 1e-12)), 10 ** (sig - 1))
+        m_max = min(int(math.floor(upper / step + 1e-12)), 10 ** sig - 1)
+        for m in range(m_min, m_max + 1):
+            out.add(m * step)
+    return sorted(out)
+
+
+def d2_corrected_rule(min_margin: float, max_divergence: float,
+                      window_minimum: float = 9.0, max_sig: int = 6) -> dict:
+    """THE CORRECTED D2 RULE, as Stage 4 writes it into BENCHMARK_PROTOCOL.md §5.
+
+    Upper bound: the minimum reference top-1/top-2 margin over the WHOLE D3 set,
+    all positions of all four rows, divided by 3. A property of the REFERENCE
+    alone, which is what makes it a bound the implementation cannot move.
+
+    Lower bound: 3x the maximum observed absolute divergence over the WHOLE set,
+    taken over BOTH engine paths measured -- the prefill path and the
+    cached-decode path.
+
+    Window check: margin / divergence must be at least `window_minimum`.
+
+    Value: the geometric mean of the two bounds, rounded to the FEWEST
+    significant figures at which some value lies inside the window, starting at
+    one; among the values at that precision lying inside the window, the one
+    nearest the geometric mean in LOG distance. The safety bound decides the
+    rounding; the rounding never decides the safety bound.
+
+    WHY THE PREVIOUS RULE'S PREMISE FAILED: Stage 3 evaluated its window check
+    at the longest length because its rule said to, and in the same section
+    established that the premise of that rule -- that margin degrades with
+    length -- is a nested-prefix artifact that does not hold across the four
+    INDEPENDENT D3 rows. The set-wide minimum is the honest bound, and under it
+    Stage 3's committed 6e-03 leaves only 1.30x rather than the 3x its own
+    condition (b) required.
+
+    Returns the full arithmetic. Never raises on a closed window: a closed
+    window is a FINDING, reported with the value left unchanged.
+    """
+    lower = 3.0 * float(max_divergence)
+    upper = float(min_margin) / 3.0
+    ratio = (float(min_margin) / float(max_divergence)) if max_divergence > 0 else None
+
+    window_open = bool(lower < upper)
+    window_wide_enough = bool(ratio is not None and ratio >= window_minimum)
+
+    result = {
+        "rule": ("lower = 3 x the set-wide maximum absolute divergence over BOTH engine "
+                 "paths; upper = the set-wide minimum reference top-1/top-2 margin / 3; "
+                 "value = the geometric mean, rounded to the fewest significant figures at "
+                 "which some value lies inside the window, nearest the geometric mean in "
+                 "log distance among those"),
+        "set_wide_max_abs_divergence": float(max_divergence),
+        "set_wide_min_reference_margin": float(min_margin),
+        "lower_bound": lower,
+        "lower_bound_derivation": f"3 x {max_divergence:.6e} = {lower:.6e}",
+        "upper_bound": upper,
+        "upper_bound_derivation": f"{min_margin:.6e} / 3 = {upper:.6e}",
+        "window_ratio_margin_over_divergence": ratio,
+        "window_minimum_required": window_minimum,
+        "window_open": window_open,
+        "window_wide_enough": window_wide_enough,
+        "usable": bool(window_open and window_wide_enough),
+    }
+
+    if not result["usable"]:
+        result["value"] = None
+        result["significant_figures"] = None
+        result["candidates"] = []
+        result["geometric_mean"] = (math.sqrt(lower * upper) if window_open else None)
+        result["finding"] = (
+            "the window is CLOSED: the lower bound is at or above the upper bound, so no "
+            "value satisfies both conditions" if not window_open else
+            f"the window is open but narrower than {window_minimum}x "
+            f"(margin / divergence = {ratio:.3f}x)")
+        return result
+
+    geo = math.sqrt(lower * upper)
+    chosen, chosen_sig, candidates = None, None, []
+    for sig in range(1, max_sig + 1):
+        candidates = _values_at_precision(lower, upper, sig)
+        if candidates:
+            chosen_sig = sig
+            chosen = min(candidates, key=lambda v: abs(math.log(v / geo)))
+            break
+
+    result["geometric_mean"] = geo
+    result["significant_figures"] = chosen_sig
+    result["candidates"] = candidates
+    result["candidate_log_distances"] = {f"{v:.6e}": abs(math.log(v / geo))
+                                         for v in candidates}
+    result["value"] = chosen
+    result["achieved_factor_above_divergence"] = (
+        chosen / max_divergence if max_divergence > 0 else None)
+    result["achieved_factor_below_margin"] = (
+        min_margin / chosen if chosen else None)
+    return result
+
+
+# ------------------------------------------------- bit-for-bit comparison ------
+
+def bitwise_comparison(a, b, label: str = "") -> dict:
+    """EXACT float32 equality, elementwise. Reports the COUNT of differing
+    elements and the maximum absolute difference -- both zero for a pass.
+
+    Separate from divergence_statistics on purpose: this is not a tolerance
+    question. Two code paths that run the same inner loops over the same
+    elements in the same order must agree exactly, and reporting that as a small
+    difference inside a tolerance would hide the one thing worth knowing."""
+    a = np.asarray(a, dtype=np.float32)
+    b = np.asarray(b, dtype=np.float32)
+    if a.shape != b.shape:
+        return {"label": label, "comparable": False,
+                "reason": f"shapes differ: {a.shape} against {b.shape}",
+                "bit_for_bit": False}
+    neq = (a != b)
+    n = int(neq.sum())
+    if n:
+        d = np.abs(a.astype(np.float64) - b.astype(np.float64))
+        maxdiff = float(d.max())
+        idx = np.argwhere(neq)[:16]
+        first = [[int(x) for x in row] for row in idx]
+    else:
+        maxdiff, first = 0.0, []
+    return {
+        "label": label,
+        "comparable": True,
+        "elements": int(a.size),
+        "differing_elements": n,
+        "max_abs_difference": maxdiff,
+        "bit_for_bit": n == 0,
+        "first_differing_indices": first,
+        "rule": "exact float32 equality; no tolerance is applied here",
+    }
 
 
 # ------------------------------------------------------------- the logit dump --
@@ -413,9 +570,17 @@ def prompt_set_identity(path: str) -> dict:
 # --------------------------------------------------------------- script mode --
 
 def _run_engine(engine: str, prompt_path: str, truncate: int, dump: str,
-                generate: int = 0, timeout: int = 1200):
+                generate: int = 0, timeout: int = 1200,
+                kv_cache: str = "off", via_decode: bool = False):
+    """One engine invocation. `kv_cache` and `via_decode` are Stage 4's: the
+    default pair ("off", False) is the Stage 3 invocation exactly, so the
+    no-cache measurement is taken by the same command line as before."""
     cmd = [engine, "--prompt-file", prompt_path, "--truncate", str(truncate),
            "--cproj", "as-stored", "--dump-logits", dump]
+    if via_decode:
+        cmd += ["--via-decode"]
+    elif kv_cache == "on":
+        cmd += ["--kv-cache", "on"]
     if generate:
         cmd += ["--generate", str(generate)]
     out = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=timeout)
@@ -451,7 +616,11 @@ def main(argv=None) -> int:
                         "the engine")
     p.add_argument("--greedy-tokens", type=int, default=3,
                    help="tokens to greedily generate for the sequence-match condition")
-    p.add_argument("--stage", default="stage-3")
+    p.add_argument("--paths", choices=("both", "nocache-only"), default="both",
+                   help="Stage 4: 'both' additionally measures the prefill path in cache "
+                        "mode and the cached-decode path (DECISION E checks 1, 2 and 3). "
+                        "'nocache-only' is the Stage 3 behaviour exactly")
+    p.add_argument("--stage", default="stage-4")
     a = p.parse_args(argv)
 
     work = a.work_dir or os.path.join(REPO, "build", "correctness_work")
@@ -489,24 +658,51 @@ def main(argv=None) -> int:
                 cached = json.load(f)
             print(f"  engine {r['id']}: reusing the cached dump ({cached['tokens']} tokens)")
             engine_runs[r["id"]] = {"dump": dump, "ids": cached["ids"],
-                                    "greedy": cached["greedy"]}
+                                    "greedy": cached["greedy"],
+                                    "dump_prefill_cache": cached.get("dump_prefill_cache"),
+                                    "dump_via_decode": cached.get("dump_via_decode")}
             continue
         gen = a.greedy_tokens if L == min(x["target_tokens"] for x in rows) else 0
-        print(f"  engine {r['id']}: prefill L={L}"
+        print(f"  engine {r['id']}: prefill L={L}, no-cache path"
               + (f", greedy {gen} tokens" if gen else ""))
         ids, _ = _run_engine(a.engine, prompt_path, L, dump, generate=gen)
         prompt_ids = ids[:L]
         greedy = ids if gen else None
-        engine_runs[r["id"]] = {"dump": dump, "ids": prompt_ids, "greedy": greedy}
+        entry = {"dump": dump, "ids": prompt_ids, "greedy": greedy}
+
+        # ---- Stage 4. Two more runs per row, when the engine offers the flags.
+        # DECISION E check 1 (the existing gate on the prefill path in CACHE
+        # mode as well as no-cache) and check 2 (the whole logit matrix from the
+        # CACHED DECODE PATH alone). Both write the same TIE2LOGI format, so the
+        # same comparator reads all three.
+        if a.paths != "nocache-only":
+            cache_dump = os.path.join(work, f"{r['id']}_engine_cache.bin")
+            print(f"  engine {r['id']}: prefill L={L}, CACHE path")
+            _run_engine(a.engine, prompt_path, L, cache_dump, kv_cache="on")
+            entry["dump_prefill_cache"] = cache_dump
+
+            dec_dump = os.path.join(work, f"{r['id']}_engine_viadecode.bin")
+            print(f"  engine {r['id']}: {L - 1} cached decode steps after a 1-token prefill "
+                  f"(check 2)")
+            _run_engine(a.engine, prompt_path, L, dec_dump, via_decode=True)
+            entry["dump_via_decode"] = dec_dump
+
+        engine_runs[r["id"]] = entry
         with open(ids_path, "w", encoding="utf-8") as f:
-            json.dump({"tokens": len(prompt_ids), "ids": prompt_ids, "greedy": greedy}, f)
+            json.dump({"tokens": len(prompt_ids), "ids": prompt_ids, "greedy": greedy,
+                       "dump_prefill_cache": entry.get("dump_prefill_cache"),
+                       "dump_via_decode": entry.get("dump_via_decode")}, f)
 
     # The oracle, once, reused across all four lengths.
     oracle = ReferenceGPT2()
     print(f"oracle: verified {oracle.n_verified} tensors against the inventory; "
           f"torch {torch.__version__}, threads {oracle.threads}, device cpu")
 
-    per_configuration = []
+    per_configuration = []          # the GATING set: the prefill path, no-cache
+    per_configuration_cache = []    # check 1, the prefill path in CACHE mode
+    per_configuration_decode = []   # check 2, the CACHED DECODE path
+    path_consistency = []           # check 3, bit-for-bit between the two
+    prefill_path_consistency = []   # check 1's two prefill paths against each other
     for r in rows:
         L = r["target_tokens"]
         run = engine_runs[r["id"]]
@@ -522,16 +718,74 @@ def main(argv=None) -> int:
         stats["prompt_row_id"] = r["id"]
         stats["target_tokens"] = L
         stats["cproj_reading"] = "as-stored"
+        stats["engine_path"] = "prefill, no-cache"
         stats["positions_covered"] = ("EVERY position of the prefill: gpt2_tool --dump-logits "
                                       "writes logits for all positions, so both D2 bounds are "
                                       "measured over the whole prefill")
         per_configuration.append(stats)
         m = stats["reference_top1_top2_margin"]
-        print(f"  L={L:4d}  max abs {stats['max_abs_diff']:.6g}  rms "
+        print(f"  L={L:4d}  prefill/nocache  max abs {stats['max_abs_diff']:.6g}  rms "
               f"{stats['rms_abs_diff']:.6g}  max rel {stats['max_rel_diff']:.6g}  "
               f"top-1 {stats['top1_agreement_positions']}/{L}  "
               f"margin min {m['min']:.6g} (pos {m['argmin_position']})  "
               f"margin/div {stats['margin_min_over_max_abs_diff']:.2f}x")
+
+        # ---- DECISION E check 1, the same gate on the prefill path in CACHE
+        # mode. Predicted identical to the no-cache path, and the prediction is
+        # checked rather than assumed: the two are also compared BIT FOR BIT.
+        if run.get("dump_prefill_cache"):
+            cache_logits = read_logit_dump(run["dump_prefill_cache"])
+            cstats = divergence_statistics(
+                cache_logits, ref, run["ids"],
+                label=f"prefill CACHE path, L={L} tokens, D3 row {r['id']}")
+            cstats["prompt_row_id"] = r["id"]
+            cstats["target_tokens"] = L
+            cstats["cproj_reading"] = "as-stored"
+            cstats["engine_path"] = "prefill, cache"
+            per_configuration_cache.append(cstats)
+            bits = bitwise_comparison(
+                cache_logits, engine_logits,
+                label=f"prefill cache against prefill no-cache, L={L}, row {r['id']}")
+            bits["prompt_row_id"] = r["id"]
+            bits["target_tokens"] = L
+            prefill_path_consistency.append(bits)
+            print(f"  L={L:4d}  prefill/cache    max abs {cstats['max_abs_diff']:.6g}  "
+                  f"top-1 {cstats['top1_agreement_positions']}/{L}  "
+                  f"against no-cache prefill: "
+                  f"{'BIT FOR BIT' if bits['bit_for_bit'] else 'DIFFERS'}"
+                  f" ({bits['differing_elements']} elements, max "
+                  f"{bits['max_abs_difference']:.6g})")
+
+        # ---- DECISION E check 2, the CACHED DECODE path against the oracle,
+        # compared exactly as the gate compares prefill; and check 3, the same
+        # matrix against the prefill matrix of the same row, bit for bit.
+        if run.get("dump_via_decode"):
+            dec_logits = read_logit_dump(run["dump_via_decode"])
+            dstats = divergence_statistics(
+                dec_logits, ref, run["ids"],
+                label=f"cached decode path, every position, L={L} tokens, D3 row {r['id']}")
+            dstats["prompt_row_id"] = r["id"]
+            dstats["target_tokens"] = L
+            dstats["cproj_reading"] = "as-stored"
+            dstats["engine_path"] = "cached decode"
+            dstats["assembly"] = ("a 1-token prefill followed by one cached decode step per "
+                                  "remaining position; every row comes from the cached path")
+            per_configuration_decode.append(dstats)
+            bits = bitwise_comparison(
+                dec_logits, engine_logits,
+                label=f"cached decode against prefill, L={L}, row {r['id']}")
+            bits["prompt_row_id"] = r["id"]
+            bits["target_tokens"] = L
+            path_consistency.append(bits)
+            dm = dstats["reference_top1_top2_margin"]
+            print(f"  L={L:4d}  cached-decode    max abs {dstats['max_abs_diff']:.6g}  rms "
+                  f"{dstats['rms_abs_diff']:.6g}  max rel {dstats['max_rel_diff']:.6g}  "
+                  f"top-1 {dstats['top1_agreement_positions']}/{L}  "
+                  f"margin min {dm['min']:.6g}")
+            print(f"           check 3 against the prefill matrix: "
+                  f"{'BIT FOR BIT' if bits['bit_for_bit'] else 'DIFFERS'} "
+                  f"({bits['differing_elements']} of {bits['elements']} elements, max abs "
+                  f"{bits['max_abs_difference']:.6g})")
 
     # The greedy-sequence condition, on the shortest row, against the same oracle.
     greedy_block = None
@@ -601,6 +855,122 @@ def main(argv=None) -> int:
     doc["configurations"] = per_configuration
     doc["greedy"] = greedy_block
 
+    # ---- Stage 4: the two extra paths, the set-wide figures over BOTH of them,
+    # and the corrected-rule D2 arithmetic (DECISION A).
+    all_paths = per_configuration + per_configuration_cache + per_configuration_decode
+    set_wide_max_div = max(c["max_abs_diff"] for c in all_paths)
+    set_wide_max_div_label = next(c["label"] for c in all_paths
+                                  if c["max_abs_diff"] == set_wide_max_div)
+    # The margin is a property of the REFERENCE alone, so it is taken over the
+    # four rows once rather than once per engine path.
+    set_wide_min_margin = min(c["reference_top1_top2_margin"]["min"]
+                              for c in per_configuration)
+    set_wide_min_margin_cfg = next(c for c in per_configuration
+                                   if c["reference_top1_top2_margin"]["min"]
+                                   == set_wide_min_margin)
+
+    doc["set_wide"] = {
+        "max_abs_divergence": set_wide_max_div,
+        "max_abs_divergence_configuration": set_wide_max_div_label,
+        "max_abs_divergence_taken_over": (
+            "BOTH engine paths this stage measures -- the prefill path and the cached-decode "
+            "path -- over all positions of all four D3 rows"
+            if per_configuration_decode else
+            "the prefill path only; the cached-decode path was not measured in this run"),
+        "min_reference_margin": set_wide_min_margin,
+        "min_reference_margin_row": set_wide_min_margin_cfg["prompt_row_id"],
+        "min_reference_margin_position":
+            set_wide_min_margin_cfg["reference_top1_top2_margin"]["argmin_position"],
+        "min_reference_margin_note": ("a property of the REFERENCE alone, so it is taken over "
+                                      "the four rows once and not per engine path"),
+        "paths_measured": [c["engine_path"] for c in
+                           ([per_configuration[0]] if per_configuration else [])
+                           + ([per_configuration_cache[0]] if per_configuration_cache else [])
+                           + ([per_configuration_decode[0]] if per_configuration_decode else [])],
+    }
+
+    doc["d2_corrected_rule"] = d2_corrected_rule(set_wide_min_margin, set_wide_max_div)
+    doc["d2_corrected_rule"]["value_in_force_at_run_time"] = tolerance
+    doc["d2_corrected_rule"]["decision"] = "DECISION A, Stage 4"
+
+    # The gate is a pure function of the statistics and the threshold, so the
+    # verdict under OTHER thresholds is recorded without re-running the engine.
+    # Stage 4 is required to record a PASS against the superseded 6e-03 as well
+    # as against the re-derived value, and the two are the same measurement.
+    if tolerance is not None:
+        also = {}
+        for name, value in (("superseded_stage3_value", 6e-03),
+                            ("stage4_corrected_rule_value",
+                             doc["d2_corrected_rule"]["value"])):
+            if value is None:
+                continue
+            also[name] = {
+                "tolerance": value,
+                "prefill_nocache": apply_d2_gate(
+                    per_configuration, value,
+                    greedy_match=(greedy_block["match"] if greedy_block else None))["verdict"],
+                "prefill_cache": (apply_d2_gate(
+                    per_configuration_cache, value,
+                    greedy_match=(greedy_block["match"] if greedy_block else None))["verdict"]
+                    if per_configuration_cache else None),
+                "cached_decode_path": (apply_d2_gate(
+                    per_configuration_decode, value,
+                    greedy_match=(greedy_block["match"] if greedy_block else None))["verdict"]
+                    if per_configuration_decode else None),
+            }
+        doc["gate_against_both_values"] = {
+            "note": ("one measurement, evaluated at two thresholds. The gate is a pure "
+                     "function of the statistics and the threshold, so no engine run was "
+                     "repeated to produce these verdicts"),
+            "values": also,
+        }
+
+    doc["stage4_checks"] = {
+        "check_1_prefill_both_paths": {
+            "description": ("the existing three-condition gate on the prefill path, run with "
+                            "the switch set to CACHE and to NO-CACHE; predicted identical"),
+            "nocache_configurations": len(per_configuration),
+            "cache_configurations": len(per_configuration_cache),
+            "cache_gate": (apply_d2_gate(
+                per_configuration_cache, tolerance,
+                greedy_match=(greedy_block["match"] if greedy_block else None))
+                if (per_configuration_cache and tolerance is not None) else None),
+            "cache_against_nocache_bit_for_bit": prefill_path_consistency,
+            "all_bit_for_bit": (all(b["bit_for_bit"] for b in prefill_path_consistency)
+                                if prefill_path_consistency else None),
+        },
+        "check_2_cached_decode_against_oracle": {
+            "description": ("the full positions x vocab logit matrix assembled from the "
+                            "CACHED DECODE PATH ALONE, compared to the oracle exactly as the "
+                            "gate compares prefill. This divergence enters the D2 lower "
+                            "bound (DECISION A)"),
+            "configurations": per_configuration_decode,
+            "margin_table": [{
+                "target_tokens": c["target_tokens"],
+                "prompt_row_id": c["prompt_row_id"],
+                "positions": c["positions"],
+                "max_abs_diff": c["max_abs_diff"],
+                "margin_min": c["reference_top1_top2_margin"]["min"],
+                "margin_min_position": c["reference_top1_top2_margin"]["argmin_position"],
+                "margin_min_over_max_abs_diff": c["margin_min_over_max_abs_diff"],
+            } for c in per_configuration_decode],
+            "top1_agreement_at_every_position": (
+                all(c["top1_agreement_fraction"] == 1.0 for c in per_configuration_decode)
+                if per_configuration_decode else None),
+            "relative_statistics_note": ("relative statistics are reported and do NOT gate, "
+                                         "as in Stage 3"),
+        },
+        "check_3_cached_decode_against_prefill": {
+            "description": ("the cached-path matrix against the prefill matrix of the same "
+                            "row, position by position. Bit-for-bit is the expectation; a "
+                            "pass only within D2 would be a result to localise, not to hide"),
+            "comparisons": path_consistency,
+            "all_bit_for_bit": (all(b["bit_for_bit"] for b in path_consistency)
+                                if path_consistency else None),
+            "total_differing_elements": sum(b["differing_elements"] for b in path_consistency),
+        },
+    }
+
     if a.measure_only:
         doc["gate"] = {
             "applied": False,
@@ -623,9 +993,33 @@ def main(argv=None) -> int:
     if verdict is None:
         print("no gate applied (measure-only)")
         return 0
-    print(f"D2 GATE: {verdict}")
+    print(f"D2 GATE: {verdict}   (prefill path, no-cache)")
     for name, cond in doc["gate"]["conditions"].items():
         print(f"  {'pass' if cond['pass'] else 'FAIL'}  {name}")
+    cg = doc["stage4_checks"]["check_1_prefill_both_paths"]["cache_gate"]
+    if cg:
+        print(f"D2 GATE: {cg['verdict']}   (prefill path, CACHE mode -- DECISION E check 1)")
+    s4 = doc["stage4_checks"]
+    if s4["check_3_cached_decode_against_prefill"]["comparisons"]:
+        print(f"check 2: cached-decode path against the oracle, set-wide max abs "
+              f"{max(c['max_abs_diff'] for c in per_configuration_decode):.6e}")
+        print(f"check 3: cached decode against prefill -- "
+              f"{'BIT FOR BIT on every row' if s4['check_3_cached_decode_against_prefill']['all_bit_for_bit'] else 'DIFFERS'}")
+    cr = doc["d2_corrected_rule"]
+    print("DECISION A, the corrected rule, from THIS run's measurement:")
+    print(f"  set-wide max abs divergence over both paths: {cr['set_wide_max_abs_divergence']:.6e}")
+    print(f"  set-wide minimum reference margin          : {cr['set_wide_min_reference_margin']:.6e}")
+    print(f"  lower = {cr['lower_bound_derivation']}   upper = {cr['upper_bound_derivation']}")
+    print(f"  window margin/divergence = {cr['window_ratio_margin_over_divergence']:.3f}x "
+          f"(at least {cr['window_minimum_required']}x required) -> "
+          f"{'OPEN' if cr['usable'] else 'NOT USABLE'}")
+    if cr["usable"]:
+        print(f"  geometric mean {cr['geometric_mean']:.6e}, "
+              f"{cr['significant_figures']} significant figures, value {cr['value']:.1e}")
+        print(f"  achieved {cr['achieved_factor_above_divergence']:.2f}x above divergence and "
+              f"{cr['achieved_factor_below_margin']:.2f}x below margin")
+    else:
+        print(f"  FINDING: {cr['finding']}")
     # A FAIL is REPORTED, not raised. The exit code lets a caller branch on it;
     # the results file is written either way.
     return 0 if verdict == "PASS" else 1

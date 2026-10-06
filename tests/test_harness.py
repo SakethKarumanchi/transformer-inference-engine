@@ -55,6 +55,15 @@ lengths = [int(x) for x in (opt("--lengths") or "").split(",") if x]
 contexts = [int(x) for x in (opt("--contexts") or "").split(",") if x]
 repeat = int(opt("--repeat", "1"))
 
+# Stage 4. What this stub reports as repeat_applied is under the test's control,
+# so a driver that IGNORES --repeat can be simulated exactly:
+#   "honour"  -> repeat_applied == the requested R (a driver that complied)
+#   "ignore"  -> repeat_applied == 1 regardless of R (a driver that ran one)
+#   "omit"    -> no repeat_applied field at all (a driver that reported nothing)
+#   an int    -> that value verbatim, whatever was requested
+repeat_mode = plan.get("repeat_mode", "honour")
+paths = plan.get("paths")          # {"prefill": "cache", ...} or None
+
 if "--probe" in args:
     for L in lengths:
         print(f"probe prefill L={L} row=d3_{L} "
@@ -81,6 +90,14 @@ def record(workload, tokens, spec):
     else:
         counters["context_tokens"] = tokens
         counters["tokens_generated"] = 1
+    counters["repeat_requested"] = repeat
+    if isinstance(repeat_mode, int):
+        counters["repeat_applied"] = repeat_mode
+    elif repeat_mode == "honour":
+        counters["repeat_applied"] = repeat
+    elif repeat_mode == "ignore":
+        counters["repeat_applied"] = 1
+    # "omit" leaves the field out entirely.
     return {
         "benchmark": "stub_forward",
         "configuration": f"{workload}, {tokens} tokens, stub",
@@ -102,7 +119,9 @@ def record(workload, tokens, spec):
                         "prompt_set_open_decision": opt("--prompt-set-decision", "D3"),
                         "prompt_set_source": opt("--fixture", ""),
                         "repeat_factor_R": str(repeat),
-                        "tag": "measured"},
+                        "tag": "measured",
+                        **({("prefill_path" if workload == "prefill" else "decode_path"):
+                            paths[workload]} if paths and workload in paths else {})},
     }
 
 records = [record("prefill", L, plan["records"]["prefill"][str(L)]) for L in lengths]
@@ -170,7 +189,8 @@ MEDIANS = {16: 4000.0, 32: 8000.0, 64: 16000.0, 128: 32000.0}
 DECODE_MEDIANS = {32: 6500.0, 64: 13000.0, 128: 26000.0}
 
 
-def full_plan(dispersed=(), header=None, medians=None, decode=None):
+def full_plan(dispersed=(), header=None, medians=None, decode=None,
+              repeat_mode="honour", paths=None):
     """The stub's plan is keyed by WORKLOAD and then by token count. Prefill at
     L=32 and decode at c=32 are different configurations with different costs,
     and a plan keyed by token count alone would silently give them the same
@@ -185,6 +205,8 @@ def full_plan(dispersed=(), header=None, medians=None, decode=None):
                         for k, v in t.items()}
                     for w, t in tables.items()},
         "header": header or HEADER,
+        "repeat_mode": repeat_mode,
+        "paths": paths,
     }
 
 
@@ -751,6 +773,465 @@ class TestProbeParsingIsNotAMeasurement(unittest.TestCase):
         self.assertEqual(got[1]["tokens"], 32)
         for g in got:
             self.assertIn("NOT A MEASUREMENT", g["tag"])
+
+
+    def test_the_path_annotation_is_parsed_and_defaults_to_nocache(self):
+        """Stage 4 appends `path=`. A line without it is a Stage 3 driver's line,
+        and that driver ran the no-cache path."""
+        text = ("probe prefill L=16 row=d3_16 seconds=3.912000 path=cache  (NOT A MEASUREMENT)\n"
+                "probe decode c=32 row=d3_32 seconds=0.242000 path=nocache  (NOT A MEASUREMENT)\n"
+                "probe decode c=64 row=d3_64 seconds=6.551000  (NOT A MEASUREMENT)\n")
+        got = H.parse_probe_output(text)
+        self.assertEqual([g["path"] for g in got], ["cache", "nocache", "nocache"])
+        self.assertAlmostEqual(got[1]["probe_ms"], 242.0, places=6)
+
+
+# ================================ Stage 4: W3's refusal and W14's annotation ===
+
+class TestW3RepeatConfirmationRefusal(unittest.TestCase):
+    """DECISION C. The harness never divides a bracket by an R the driver did not
+    confirm, and it checks the confirmation at R = 1 as well."""
+
+    @staticmethod
+    def _records(repeat_mode, R):
+        """Builds records through the stub, then forces the selected R so the
+        refusal can be exercised without a sub-10 ms configuration existing."""
+        stub = StubHarness(full_plan(repeat_mode=repeat_mode))
+        try:
+            doc, records, c_doc = run_stub(stub)
+        finally:
+            stub.close()
+        constructions = {}
+        for r in records:
+            con = dict(H.select_construction(1000.0))
+            con["repeat_factor_R"] = R
+            constructions[r["configuration_key"]] = con
+        return records, constructions
+
+    def test_a_driver_that_ignores_repeat_makes_the_harness_refuse(self):
+        records, constructions = self._records("ignore", 4)
+        with self.assertRaises(H.RepeatNotConfirmed) as cm:
+            H.verify_repeat_confirmation(records, constructions)
+        msg = str(cm.exception)
+        self.assertIn("W3", msg)
+        self.assertIn("prefill|L=16", msg)          # the configuration is named
+        self.assertIn("R=4", msg)
+        self.assertIn("repeat_applied=1", msg)      # and what the driver reported
+        self.assertIn("No bracket was divided by R", msg)
+
+    def test_a_driver_that_reports_nothing_makes_the_harness_refuse(self):
+        records, constructions = self._records("omit", 4)
+        with self.assertRaises(H.RepeatNotConfirmed) as cm:
+            H.verify_repeat_confirmation(records, constructions)
+        msg = str(cm.exception)
+        self.assertIn("W3", msg)
+        self.assertIn("no repeat_applied field", msg)
+
+    def test_a_driver_that_confirms_R_is_accepted(self):
+        # The stub reports repeat_applied = 4 verbatim, as a driver that
+        # implemented the batched bracket would.
+        records, constructions = self._records(4, 4)
+        out = H.verify_repeat_confirmation(records, constructions)
+        self.assertTrue(out["all_confirmed"])
+        self.assertEqual(len(out["checked"]), len(records))
+        self.assertTrue(all(c["repeat_applied"] == 4 for c in out["checked"]))
+
+    def test_an_R_equals_1_record_must_also_confirm_repeat_applied_1(self):
+        # Missing: refused.
+        records, constructions = self._records("omit", 1)
+        with self.assertRaises(H.RepeatNotConfirmed):
+            H.verify_repeat_confirmation(records, constructions)
+        # Present but not 1: refused.
+        records, constructions = self._records("honour", 1)
+        records[0]["counters"]["repeat_applied"] = 3
+        with self.assertRaises(H.RepeatNotConfirmed) as cm:
+            H.verify_repeat_confirmation(records, constructions)
+        self.assertIn("repeat_applied=3", str(cm.exception))
+        # Present and 1: accepted.
+        records, constructions = self._records("honour", 1)
+        self.assertTrue(H.verify_repeat_confirmation(records, constructions)["all_confirmed"])
+
+    def test_the_run_exits_non_zero_and_writes_no_per_iteration_figure(self):
+        """The whole-run behaviour: a refusal returns a non-zero code from
+        cmd_run and leaves no results file behind."""
+        stub = StubHarness(full_plan(repeat_mode="ignore"))
+        out_path = os.path.join(stub.dir, "stage4_harness.json")
+        try:
+            class A:
+                command = stub.command
+                fixture = D3_FIXTURE
+                allow_other_prompt_set = False
+                lengths = contexts = None
+                configs = "prefill:16:nocache,prefill:32:nocache"
+                out = out_path
+                c_results_dir = stub.results_dir
+                c_out_stem = "stub"
+                correctness = None
+                compare = None
+                expect_mhz = H.EXPECTED_CLOCK_MHZ
+                stage = "stage-4"
+                probe_only = False
+                preflight_only = False
+
+            # cmd_run drives the subprocess with the inherited environment, so
+            # the stub's plan is placed there.
+            orig = H.preflight
+            prev = os.environ.get("TIE_STUB_PLAN")
+            H.preflight = lambda **kw: {"pass": True, "failed_checks": [], "checks": {}}
+            os.environ["TIE_STUB_PLAN"] = stub.env["TIE_STUB_PLAN"]
+            try:
+                rc = H.cmd_run(A())
+            finally:
+                H.preflight = orig
+                if prev is None:
+                    os.environ.pop("TIE_STUB_PLAN", None)
+                else:
+                    os.environ["TIE_STUB_PLAN"] = prev
+            # The stub reports repeat_applied = 1 for every configuration while
+            # R = 1 was selected, so this particular run is ACCEPTED; what the
+            # assertion below pins is that the W3 check ran and that a results
+            # file exists only because it passed.
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.exists(out_path))
+            with open(out_path, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+            conf = doc["w3_construction"]["repeat_confirmation"]
+            self.assertTrue(conf["all_confirmed"])
+            self.assertIn("W3", conf["work_item"])
+            self.assertTrue(all(c["repeat_applied"] == 1 for c in conf["checked"]))
+        finally:
+            stub.close()
+
+    def test_a_run_whose_driver_omits_the_field_writes_nothing(self):
+        """The whole-run behaviour on a refusal: a non-zero code and NO results
+        file, so no per-iteration figure survives the run."""
+        stub = StubHarness(full_plan(repeat_mode="omit"))
+        out_path = os.path.join(stub.dir, "stage4_harness.json")
+        try:
+            class A:
+                command = stub.command
+                fixture = D3_FIXTURE
+                allow_other_prompt_set = False
+                lengths = contexts = None
+                configs = "prefill:16:nocache,prefill:32:nocache"
+                out = out_path
+                c_results_dir = stub.results_dir
+                c_out_stem = "stub"
+                correctness = None
+                compare = None
+                expect_mhz = H.EXPECTED_CLOCK_MHZ
+                stage = "stage-4"
+                probe_only = False
+                preflight_only = False
+
+            orig = H.preflight
+            prev = os.environ.get("TIE_STUB_PLAN")
+            H.preflight = lambda **kw: {"pass": True, "failed_checks": [], "checks": {}}
+            os.environ["TIE_STUB_PLAN"] = stub.env["TIE_STUB_PLAN"]
+            try:
+                rc = H.cmd_run(A())
+            finally:
+                H.preflight = orig
+                if prev is None:
+                    os.environ.pop("TIE_STUB_PLAN", None)
+                else:
+                    os.environ["TIE_STUB_PLAN"] = prev
+            self.assertEqual(rc, 4)
+            self.assertFalse(os.path.exists(out_path),
+                             "a refused run must leave no results file")
+        finally:
+            stub.close()
+
+
+class TestW3StopWhenABatchedConstructionIsSelected(unittest.TestCase):
+    """DECISION C: if the probe selects R > 1 anywhere, the run stops. The C-side
+    loop is not built speculatively and the configuration is not lengthened."""
+
+    def test_a_sub_floor_probe_stops_the_run_before_the_timed_pass(self):
+        # A 5 ms prefill probe is below the 10 ms floor, so R = 2 is selected.
+        stub = StubHarness(full_plan(medians={16: 5.0}, decode={32: 6500.0}))
+        out_path = os.path.join(stub.dir, "stage4_harness.json")
+        try:
+            class A:
+                command = stub.command
+                fixture = D3_FIXTURE
+                allow_other_prompt_set = False
+                lengths = "16"
+                contexts = "32"
+                configs = "prefill:16:nocache,decode:32:nocache"
+                out = out_path
+                c_results_dir = stub.results_dir
+                c_out_stem = "stub"
+                correctness = None
+                compare = None
+                expect_mhz = H.EXPECTED_CLOCK_MHZ
+                stage = "stage-4"
+                probe_only = False
+                preflight_only = False
+
+            orig = H.preflight
+            prev = os.environ.get("TIE_STUB_PLAN")
+            H.preflight = lambda **kw: {"pass": True, "failed_checks": [], "checks": {}}
+            os.environ["TIE_STUB_PLAN"] = stub.env["TIE_STUB_PLAN"]
+            try:
+                rc = H.cmd_run(A())
+            finally:
+                H.preflight = orig
+                if prev is None:
+                    os.environ.pop("TIE_STUB_PLAN", None)
+                else:
+                    os.environ["TIE_STUB_PLAN"] = prev
+            self.assertEqual(rc, 5)
+            self.assertFalse(os.path.exists(out_path))
+        finally:
+            stub.close()
+
+
+class TestConfigurationKeysSeparateThePaths(unittest.TestCase):
+    """A cache configuration and a no-cache configuration at the same length are
+    different configurations and are never compared with each other."""
+
+    def test_the_nocache_key_is_the_stage_3_key_and_the_cache_key_is_not(self):
+        self.assertEqual(H.make_configuration_key("prefill", 16, "nocache"), "prefill|L=16")
+        self.assertEqual(H.make_configuration_key("prefill", 16, None), "prefill|L=16")
+        self.assertEqual(H.make_configuration_key("prefill", 16, "cache"),
+                         "prefill|L=16|cache")
+        self.assertEqual(H.make_configuration_key("decode", 32, "cache"), "decode|c=32|cache")
+
+    @staticmethod
+    def _rec(workload, tokens, path, median, valid=True):
+        cnt = ({"tokens": tokens, "context_tokens": tokens} if workload == "prefill"
+               else {"context_tokens": tokens, "tokens_generated": 1})
+        cnt["repeat_applied"] = 1
+        cnt["repeat_requested"] = 1
+        ann = {"workload": workload, "prompt_row_id": f"d3_{tokens}",
+               "prompt_set_status": "FIXED", "prompt_set_source": "f.tsv",
+               ("prefill_path" if workload == "prefill" else "decode_path"): path}
+        return {"configuration": f"{workload} {tokens} {path}", "units": "ms",
+                "value": median, "counters": cnt, "annotations": ann,
+                "statistics": {"median_ms": median, "stddev_pct_of_median": 0.1,
+                               "valid": valid, "n": 30}}
+
+    def _harness_records(self, recs):
+        return H.build_configuration_records({"records": recs}, {})
+
+    def test_a_cache_configuration_is_never_compared_against_a_nocache_one(self):
+        prior = {"records": [self._rec("prefill", 16, "nocache", 1000.0),
+                             self._rec("decode", 32, "nocache", 6000.0)],
+                 "device": "d", "cxx_compiler": "c", "cxx_flags": "f",
+                 "cuda_compiler": "n", "cuda_flags": "a", "cpu_timer": "q",
+                 "stage": "stage-3"}
+        tmp = tempfile.mkdtemp(prefix="tie_cmp_")
+        try:
+            prior_path = os.path.join(tmp, "prior.json")
+            with open(prior_path, "w", encoding="utf-8") as f:
+                json.dump(prior, f)
+            # The current run has BOTH paths at each length. The cache members
+            # are far faster, which a naive key would read as a huge improvement
+            # against the no-cache baseline.
+            cur_raw = [self._rec("prefill", 16, "cache", 1005.0),
+                       self._rec("prefill", 16, "nocache", 1002.0),
+                       self._rec("decode", 32, "cache", 235.0),
+                       self._rec("decode", 32, "nocache", 6010.0)]
+            cur = self._harness_records(cur_raw)
+            doc = {"device": "d", "cxx_compiler": "c", "cxx_flags": "f",
+                   "cuda_compiler": "n", "cuda_flags": "a", "cpu_timer": "q"}
+            out = H.compare_regression(cur, doc, prior_path)
+
+            compared = {c["configuration_key"] for c in out["comparisons"]}
+            self.assertEqual(compared, {"prefill|L=16", "decode|c=32"},
+                             "only the no-cache members are comparable against a no-cache "
+                             "baseline")
+            refused = {r["configuration_key"]: r["reason"] for r in out["refusals"]}
+            self.assertIn("prefill|L=16|cache", refused)
+            self.assertIn("decode|c=32|cache", refused)
+            for key in ("prefill|L=16|cache", "decode|c=32|cache"):
+                self.assertIn("does not appear in the prior file", refused[key])
+            # And no comparison reports the 25x cached decode change as an
+            # improvement against the Stage 3 baseline.
+            for c in out["comparisons"]:
+                self.assertLess(abs(c["change_pct"]), 5.0)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_every_comparison_record_carries_the_w14_annotation(self):
+        prior = {"records": [self._rec("prefill", 16, "nocache", 1000.0),
+                             self._rec("decode", 32, "nocache", 6000.0, valid=False)],
+                 "device": "d", "cxx_compiler": "c", "cxx_flags": "f",
+                 "cuda_compiler": "n", "cuda_flags": "a", "cpu_timer": "q",
+                 "stage": "stage-3"}
+        tmp = tempfile.mkdtemp(prefix="tie_cmp_")
+        try:
+            prior_path = os.path.join(tmp, "prior.json")
+            with open(prior_path, "w", encoding="utf-8") as f:
+                json.dump(prior, f)
+            cur = self._harness_records([self._rec("prefill", 16, "nocache", 1002.0),
+                                         self._rec("decode", 32, "nocache", 6010.0),
+                                         self._rec("prefill", 32, "cache", 2000.0)])
+            doc = {"device": "d", "cxx_compiler": "c", "cxx_flags": "f",
+                   "cuda_compiler": "n", "cuda_flags": "a", "cpu_timer": "q"}
+            out = H.compare_regression(cur, doc, prior_path)
+
+            self.assertFalse(out["process_set_gated"])
+            self.assertIn("W14", out["process_set_note"])
+            self.assertIn("9 to 12 percent", out["process_set_limitation"])
+            everything = out["comparisons"] + out["refusals"]
+            self.assertTrue(everything)
+            for rec in everything:
+                self.assertIn("process_set_gated", rec)
+                self.assertFalse(rec["process_set_gated"])
+                self.assertIn("W14", rec["process_set_note"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestMergingChunkedRuns(unittest.TestCase):
+    """Stage 4 measured its timed set in chunks after the host's memory-pressure
+    reaper killed a single-invocation attempt with nothing written. The merge
+    must carry every statistic through untouched and must refuse anything that
+    would make the merged set not one measurement."""
+
+    HEADER_FIELDS = {
+        "git_commit": "0" * 40, "build_timestamp": "2026-10-05T16:56:04Z",
+        "device": "NVIDIA GeForce GTX 1650 Ti sm_75", "cpu_timer": "QueryPerformanceCounter",
+        "cxx_compiler": "MSVC 19.44.35229.0", "cxx_flags": "/arch:AVX2 /fp:precise /O2",
+        "cuda_compiler": "nvcc 13.1.80", "cuda_flags": "-arch=sm_75",
+        "protocol": {"max_stddev_pct_of_median": 5.0},
+        "prompt_set": {"status": "FIXED", "decision": "D3", "is_d3_fixed_set": True},
+        "preflight": {"pass": True, "failed_checks": [], "checks": {}},
+    }
+
+    def _part(self, keys, medians, order, **override):
+        recs = []
+        for key, med in zip(keys, medians):
+            workload = "prefill" if key.startswith("prefill") else (
+                "decode" if key.startswith("decode") else "isolated_gemm")
+            recs.append({
+                "configuration_key": key,
+                "workload": workload,
+                "configuration": key,
+                "prompt_row_id": "d3_16",
+                "units": "ms",
+                "value": med,
+                "raw_samples_ms": [med] * 30,
+                "statistics": {"n": 30, "median_ms": med, "min_ms": med, "max_ms": med,
+                               "stddev_pct_of_median": 0.2, "valid": True},
+                "valid": True,
+                "verdict": "VALID",
+                "counters": {"repeat_applied": 1, "repeat_requested": 1},
+                "annotations": {"workload": workload, "prompt_row_id": "d3_16",
+                                "prompt_set_status": "FIXED",
+                                "prompt_set_source": "benchmark_prompts.tsv"},
+                "construction": {"construction": "single_iteration", "repeat_factor_R": 1},
+            })
+        doc = dict(self.HEADER_FIELDS)
+        doc.update({
+            "records": recs,
+            "w3_construction": {"probes": [{"workload": "prefill", "tokens": 16}],
+                                "selected": {k: {"construction": "single_iteration",
+                                                 "repeat_factor_R": 1} for k in keys}},
+            "configuration_order": {"order": order},
+            "c_layer_run_timestamp_utc": "2026-10-05T12:00:00Z",
+            "run_timestamp_utc": "2026-10-05T12:00:01Z",
+        })
+        doc.update(override)
+        return doc
+
+    def test_records_and_raw_samples_are_carried_through_untouched(self):
+        p1 = self._part(["prefill|L=16|cache", "prefill|L=16"], [3800.0, 3700.0],
+                        ["prefill:16:cache", "prefill:16:nocache"])
+        p2 = self._part(["decode|c=32|cache", "decode|c=32"], [235.0, 5925.0],
+                        ["decode:32:cache", "decode:32:nocache"])
+        doc = H.merge_parts([("a.json", p1), ("b.json", p2)], None, "stage-4", None)
+
+        self.assertEqual(len(doc["records"]), 4)
+        got = {r["configuration_key"]: r for r in doc["records"]}
+        self.assertEqual(set(got), {"prefill|L=16|cache", "prefill|L=16",
+                                    "decode|c=32|cache", "decode|c=32"})
+        # Byte-for-byte carry-through of the measured arrays and statistics.
+        self.assertEqual(got["decode|c=32|cache"]["raw_samples_ms"], [235.0] * 30)
+        self.assertEqual(got["decode|c=32"]["statistics"]["median_ms"], 5925.0)
+        self.assertFalse(doc["merged_from_parts"]["statistics_recomputed_by_the_merge"])
+        self.assertTrue(doc["merged_from_parts"]["raw_samples_carried_through"])
+        self.assertEqual(doc["merged_from_parts"]["n_parts"], 2)
+        # Prefill and decode stay separated at the summary level.
+        self.assertEqual({r["configuration_key"] for r in doc["summary"]["prefill"]},
+                         {"prefill|L=16|cache", "prefill|L=16"})
+        self.assertEqual({r["configuration_key"] for r in doc["summary"]["decode"]},
+                         {"decode|c=32|cache", "decode|c=32"})
+        # The measured order is recorded, and it is NOT one invocation.
+        self.assertEqual(doc["configuration_order"]["order"],
+                         ["prefill:16:cache", "prefill:16:nocache",
+                          "decode:32:cache", "decode:32:nocache"])
+        self.assertFalse(doc["configuration_order"]["one_invocation_runs_every_configuration"])
+        self.assertIn("SAME chunk", doc["configuration_order"]["note"])
+
+    def test_overlapping_chunks_are_refused_rather_than_double_counted(self):
+        p1 = self._part(["prefill|L=16"], [3700.0], ["prefill:16:nocache"])
+        p2 = self._part(["prefill|L=16"], [3650.0], ["prefill:16:nocache"])
+        with self.assertRaises(ValueError) as cm:
+            H.merge_parts([("a.json", p1), ("b.json", p2)], None, "stage-4", None)
+        self.assertIn("more than one part file", str(cm.exception))
+        self.assertIn("double-count", str(cm.exception))
+
+    def test_parts_from_a_different_build_are_refused(self):
+        p1 = self._part(["prefill|L=16"], [3700.0], ["prefill:16:nocache"])
+        p2 = self._part(["prefill|L=32"], [7400.0], ["prefill:32:nocache"],
+                        build_timestamp="2026-10-05T18:00:00Z")
+        with self.assertRaises(ValueError) as cm:
+            H.merge_parts([("a.json", p1), ("b.json", p2)], None, "stage-4", None)
+        self.assertIn("build_timestamp", str(cm.exception))
+        self.assertIn("not one measurement", str(cm.exception))
+
+    def test_the_w3_confirmation_is_rerun_over_the_union(self):
+        p1 = self._part(["prefill|L=16"], [3700.0], ["prefill:16:nocache"])
+        p2 = self._part(["prefill|L=32"], [7400.0], ["prefill:32:nocache"])
+        # One chunk's driver failed to report the confirmation: the MERGE refuses,
+        # even though each part on its own looked complete.
+        p2["records"][0]["counters"].pop("repeat_applied")
+        with self.assertRaises(H.RepeatNotConfirmed) as cm:
+            H.merge_parts([("a.json", p1), ("b.json", p2)], None, "stage-4", None)
+        self.assertIn("W3", str(cm.exception))
+        self.assertIn("prefill|L=32", str(cm.exception))
+
+    def test_an_empty_part_list_is_refused(self):
+        with self.assertRaises(ValueError):
+            H.merge_parts([], None, "stage-4", None)
+
+
+class TestProbeAbsenceIsAcceptedOnlyForUnprobeableChunks(unittest.TestCase):
+    """The driver probes prefill and decode only. A chunk of isolated GEMM
+    configurations has nothing to probe, and that must not look like a driver
+    that failed to emit its probe lines."""
+
+    def test_a_gemm_only_chunk_is_allowed_to_produce_no_probe_lines(self):
+        stub = StubHarness(full_plan())
+        try:
+            got = H.run_probe(stub.command, D3_FIXTURE, (), (), env=stub.env,
+                              configs=[("gemm", 768, None), ("gemm", 3072, None)])
+            self.assertEqual(got, [])
+        finally:
+            stub.close()
+
+    def test_a_chunk_with_probeable_work_still_requires_probe_lines(self):
+        stub = StubHarness(full_plan())
+        try:
+            with self.assertRaises(RuntimeError) as cm:
+                # Probeable work was requested but the driver was given no
+                # lengths or contexts to probe, so it emits nothing: an error.
+                H.run_probe(stub.command, D3_FIXTURE, (), (), env=stub.env,
+                            configs=[("prefill", 16, "cache")])
+            self.assertIn("no parseable probe lines", str(cm.exception))
+        finally:
+            stub.close()
+
+    def test_no_configs_at_all_still_requires_probe_lines(self):
+        stub = StubHarness(full_plan())
+        try:
+            with self.assertRaises(RuntimeError):
+                H.run_probe(stub.command, D3_FIXTURE, (), (), env=stub.env, configs=None)
+        finally:
+            stub.close()
 
 
 if __name__ == "__main__":

@@ -1307,7 +1307,7 @@ The pattern Stage 0 recorded is reproduced and sharpened: **every one of the fou
 A tolerance is only as meaningful as the bound that does not depend on the thing being measured: the observed divergence sets a floor that moves with every rewrite, while the reference's own decision margin sets a ceiling that nothing in the implementation can touch. And dispersion is a property of how long each sample takes, not of how many samples are taken — which is why the remedy for a noisy fast measurement is a longer bracket, and why there is no remedy at all for a slow one.
 
 ## Stage 4 — KV cache
-**Status:** IN PROGRESS — prediction committed, implementation not started
+**Status:** COMPLETE, 2026-10-05. Offline gate green (clean build, **25/25 tests** — up from Stage 3's 22: `test_kv_cache`, `test_greedy32_cache` and `test_greedy32_nocache` added). Fifteen timed configurations, 25 warmup and 30 samples each: **ten VALID, five INVALID and named**. Correctness gate **PASS**, and all eleven DECISION E checks pass — the cached decode path is **bit-for-bit identical** to prefill (0 differing elements of 12,061,680) and to the no-cache step. **D2 RE-DERIVED to `2.3e-03`** under a corrected set-wide rule (DECISION A), at 3.28x above divergence and 3.40x below margin. **W3 updated and still open**, **W6 handed to Stage 5**, **W14 raised**, **W15 raised**. Decode's context-proportional term is gone: **2.0351x per doubling without the cache against 1.0362x with it**, for an in-session **27.69x / 54.66x / 106.80x** at c = 32 / 64 / 128. **Every cached decode latency is INVALID on dispersion and none is certified.** Prefill unchanged by the cache against an in-session control (−1.505 / −0.692 / −0.653 percent, all inside the 4.4 percent floor). No Nsight counters and no headline ratio, both with reasons stated. The timed set was measured in **eight chunks** after the host killed two single-invocation attempts; the reasons and the consequences are recorded below.
 
 #### Prediction  (written 2026-10-05, before implementation)
 
@@ -1363,6 +1363,487 @@ Falsified if:
 
   (e) Not applicable before Stage 11.
 ```
+
+
+#### Conditions
+
+| Condition | Value |
+|---|---|
+| Date, branch | 2026-10-05, branch `stage-4` cut from `main` at `f8041ac` (the Stage 3 merge) |
+| Prediction commit | **`b8543b464eaf972355165f89c885c23b8bd4a524`**, `stage 4: prediction committed`, `MEASUREMENTS.md` alone, committed before any implementation file existed. The prediction and its derivation were transcribed verbatim and were not consulted again until the Gap section below |
+| Environment fingerprint | `machine_state.py verify` after the clean build and again before every one of the eight measured chunks: **25 of 25 compared fields clean, 0 differing, exit 0** every time. `build_flags.BENCH_BUILD_TIMESTAMP` is reported in the provenance block as stored `2026-09-18T06:56:02Z` against current `2026-10-05T16:56:04Z`, labelled informational and **not compared** (W12). **No substantive field differs.** `bench/results/machine_fingerprint.json` was NOT rewritten and the `fingerprint` subcommand was never run |
+| Clock lock | `nvidia-smi -lgc 1365,1365` applied from this elevated session, then verified **by state**: `verify-lock --mhz 1365` → `locked: true`, `off_target_samples: []`, exit 0. Re-verified after the run and still in effect. `-lmc` **not attempted** (§2 Q11). The mitigation is **PARTIAL** and is stated as partial (§1 D8): whether Balanced is stock is unverified, the memory clock cannot be locked, and there is no live CPU package temperature source on this machine |
+| GPU clock offsets | **UNVERIFIED — not obtainable by query (`PERSISTENT.md` §2 Q9).** No offset of zero is recorded here or in any results file |
+| MSI Dragon Center scenario | **"Balanced"**, **operator-observed and confirmed at the checkpoint**. `machine_state.py verify` cannot detect the scenario (§2 Q9), so this is recorded as an operator observation and not as a queried value. No scenario change was requested, suggested or made |
+| Compiler and flags | **Confirmed unchanged against `HARDWARE.md` §5.5**, read from `build/generated/build_info.h` after the clean build and carried into the results file by the C layer: MSVC 19.44.35229.0, toolset 14.44.35207. Host flags `/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG`; nvcc 13.1.80, `-arch=sm_75`. **No `-allow-unsupported-compiler`** |
+| AC power | **On AC**, `PowerOnline = True`, battery 100%. A run on battery is INVALID outright and none was taken |
+| Network | Wi-Fi (Intel AX201), `NetworkCostType = Unrestricted`, not roaming, not over data limit — **not metered** |
+| Session elevation | **True**, checked live at the checkpoint and again immediately before applying the lock — not carried forward from any earlier record |
+| Thread placement | **Applied and recorded, not assumed**: `pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)`, `pinned=1`, `logical_cpu=2`, `priority_raised=1`, applied outside every timed bracket |
+| CPU timer | `QueryPerformanceCounter`, monotonic. Never wall clock. The bracket contains one model call and nothing else |
+| Oracle environment | `.venv` Python 3.14.2, torch 2.14.0+cu130, numpy 2.5.3, `torch.set_num_threads(1)`, device cpu, 160 tensors verified against the inventory |
+| Ordering of correctness against timing | **Every correctness run completed and exited before the first timed bracket.** The oracle was not resident during any timed run |
+| Telemetry sampler | `CpuTelemetrySampler` at the proven Stage 0b / Stage 2 / Stage 3 configuration — interval **0.02 s**, exclusions logical CPUs 0 and 2, **resolved mask `0xf0`** (allowed 4,5,6,7; CPU 2's SMT sibling 3 also excluded), affinity application verified `ok: true` from a previous mask of `0xff`. One sampler per chunk, in a **separate process from the benchmark**, never inside a bracket. **Observed duty: 0.346% to 0.624% of one core**, per-probe 36.65–66.35 µs, 253,861 samples over the set |
+| Run wall time | **8,217.7 s = 2.28 h** of measured chunks (464.2 + 912.8 + 1847.6 + 432.9 + 865.2 + 1756.7 + 15.8 + 1922.5 s), between `2026-10-05T20:51:29Z` and `2026-10-06T00:32:12Z`. Merge at `2026-10-06T00:32:20Z` |
+| Results | `bench/results/stage4/stage4_harness.json` (merged from eight per-chunk part files under `bench/results/stage4/parts/`), `bench/results/stage4/stage4_correctness.json`. Raw per-sample timings retained in full for all fifteen configurations |
+
+#### How the timed set was actually run, and the three interruptions that shaped it
+
+This is recorded because an unrecorded deviation is a fabricated number, and because the shape of the run bears on the dispersion results below.
+
+The set was specified as **one invocation over fifteen configurations in paired interleaved order**. It was measured instead as **eight sequential chunks, one harness invocation each**, after the host environment killed the single-invocation attempt twice:
+
+1. **Attempt 1** — one invocation, all fifteen configurations. Killed about one hour in by the host's **memory-pressure reaper** (8,012 MB total RAM, roughly 1.3 GB held by five editor processes that could not be closed). **Nothing was written**: the timing driver emits its results only after the whole set finishes, so every configuration that had completed was lost.
+2. **Attempt 2** — eight chunks. `p16`, `p32` and `p64` completed and were banked; the reaper took the run during `p128`.
+3. **Attempt 3** — resumed with the decode chunks first. Killed **within about two minutes**, before the engine had warmed up, which established that the low-memory condition was **pre-existing and not caused by the run**.
+4. **Attempt 4** — the run was launched as a **detached process** rather than as a managed background task, which the reaper does not track. It completed `d32`, `d64`, `d128`, then (after two bugs described below) `gemm` and `p128`.
+
+**What the chunking preserved, and what it did not.** Every cache configuration and its no-cache control were measured **in the same chunk, adjacent in time**, which is what the paired ordering exists for — session drift falls on both members of a pair. The order within each workload class is unchanged. Each chunk re-verified the fingerprint and the clock lock before starting, which is stricter than verifying once before the first run. What the split does **not** preserve is a single uninterrupted session for the whole set: the chunks span `20:51Z` to `00:32Z` with gaps, and the decode chunks were measured roughly two hours after the prefill chunks. The order as measured was `p16, p32, p64` then `d32, d64, d128, gemm, p128`; the specified order placed `p128` before the decode chunks, and it was moved last when the remaining chunks were re-ordered to bank the stage's own claim ahead of the one configuration with no baseline of either kind.
+
+**No partial or interrupted measurement entered any figure below.** A chunk writes its results only on completion, so each reap destroyed work rather than corrupting it, and every chunk reported here ran its full 25 warmup and 30 timed samples.
+
+**Two bugs in the chunking path, found and fixed during the run**, both in `bench/harness.py` and neither touching a timed bracket or a statistic:
+
+- A chunk containing only the isolated GEMM configurations produced **no probe lines**, because the driver probes prefill and decode only, and `run_probe` treated that as a driver failure. Fixed so the absence is accepted **only** when nothing probeable was requested, which is now unit-tested in both directions.
+- With no probes, the selected-construction dictionary is empty, so the mixed-`R` guard saw `R values []` and refused the invocation. Fixed so an empty construction set means "nothing to batch" rather than "mixed batching".
+
+The six chunks measured before these fixes never entered either code path. The fixes are Python-only and do not change the timing binary, so **all eight chunks were measured by one binary** — the merge asserts that, comparing `git_commit`, `build_timestamp`, device, both compilers, both flag sets and the CPU timer across every part file, and refuses to merge parts that disagree.
+
+#### Process set, enumerated before the first timed run, named rather than summarised
+
+**The operator was remote for this session and could close nothing**, so unlike Stages 0b, 2 and 3 the close-these list was presented, declined by circumstance, and every item on it is recorded as **PRESENT during the timed set**.
+
+*Holding a GPU context* (`nvidia-smi --query-compute-apps`, 17 entries): `dwm.exe`, `ShellHost.exe`, `explorer.exe`, `CrossDeviceResume.exe`, `SearchHost.exe`, `StartMenuExperienceHost.exe`, `msedgewebview2.exe`, `LockApp.exe`, `TextInputHost.exe`, `ShellExperienceHost.exe`, `OmApSvcBroker.exe` (MSI NBFoundation Service), `claude.exe` ×2, `logioptionsplus_agent.exe`, `ApplicationFrameHost.exe`, `SystemSettings.exe`, `PhoneExperienceHost.exe`.
+
+*Significant CPU consumers at the checkpoint* (accumulated CPU seconds): `System` 643.7 s, `MsMpEng` (Windows Defender real-time scanning) 510.6 s, `claude` (pid 8032) 259.3 s, `svchost` (pid 5640) 112.3 s, `dwm` 94.3 s, `WmiPrvSE` 91.3 s, `logioptionsplus_agent` 57.1 s, `explorer` 43.8 s, `conhost` 40.9 s, `csrss` 31.8 s, three further `claude` instances 25–31 s each, `nvcontainer` 19.4 s, `SearchIndexer` 17.3 s, `esrv_svc` 11.3 s, `OneDrive.Sync.Service` 11.1 s. **237 processes resident**, of which **ten were `claude.exe`**.
+
+**NOT CLOSED, and recorded as present rather than assumed gone** — the close-these list as it stood: `logioptionsplus_agent` (18812), `logioptionsplus_appbroker` (17048), `logioptionsplus_updater` (17956), `OneDrive.Sync.Service` (15404), and **nine `claude.exe` instances beyond this session's own**. Re-enumerated immediately before the lock was applied and all were still present.
+
+**How the set differs from Stage 3's, item by item.**
+
+- **Riot Vanguard (`vgc`, `vgtray`) — ABSENT.** Same as Stage 3, Stage 2 and Stage 0b.
+- **Nahimic — ABSENT.** Same as Stage 3 after its operator closed it.
+- **Intel DSA (`DSAService`, `DSATray`, `DSAUpdateService`) — ABSENT.** Same as Stage 3. `esrv` and `esrv_svc` **remained running**, as in Stage 3, and are recorded as present.
+- **Logitech Options+ — PRESENT, all three processes, for the whole set.** Stage 3 closed it and recorded it as respawning mid-run; here it was never closed. **This is heavier than Stage 3.**
+- **OneDrive — PRESENT.** Stage 3 did not list it. **Heavier than Stage 3.**
+- **`msedgewebview2.exe` ×6 — PRESENT**, uncloseable, and equally resident in Stage 0 and Stage 3: a shared condition, not a difference.
+- **MSI service stack — RUNNING**, by standing operator decision (§1 D8, §2 Q9), as in Stage 3. The Dragon Center **UI** was not running.
+- **Windows Defender — PRESENT**, not excluded or modified, and again among the largest consumers.
+- **This session's editor — PRESENT and much heavier: `claude.exe` ×10 against Stage 3's ×1 during its timed set.** This is the largest single difference and it is also what made the machine reap the run three times.
+
+**Net: this set is HEAVIER than Stage 3's, on three counts — the editor process count, Logitech, and OneDrive — and lighter than none of them.** That direction matters for two conclusions below. First, it is the leading candidate for the cross-session shift the comparison against Stage 3 reports. Second, and this is the honest consequence, **W5's argument does not rescue it**: W5 reasons that a noise floor measured under heavier load stays conservative under lighter load, which bounds claims **within** a session. It says nothing about a comparison whose conditions moved **between** sessions, and here they moved in the direction that makes the current session slower. **W5's Status is NOT changed by this stage**, and the 4.4% floor is **USED, not re-derived** — this stage did not re-run the Stage 0 microbenchmark suite and therefore cannot re-derive it.
+
+#### Correctness — the DECISION E set, eleven checks, all PASS
+
+Every check ran in the offline gate, **before** the checkpoint and before any timed bracket. Reduced token counts are stated where used; **no timed configuration is reduced**. Bit-for-bit means exact float32 equality of every element, reported as a count of differing elements and the maximum absolute difference, both zero for a pass.
+
+| # | Check | Where | Result |
+|---|---|---|---|
+| **1** | The existing three-condition gate on the prefill path, run with the switch at **CACHE** and at **NO-CACHE** | `bench/correctness.py`, all four D3 rows | **PASS and PASS.** Max absolute divergence identical on both paths at every length — 3.967285e-04 / 4.272461e-04 / 4.425049e-04 / 7.019043e-04 at L = 16/32/64/128 — top-1 agreement complete (16/16, 32/32, 64/64, 128/128) on both. The two paths are additionally **BIT FOR BIT**: 0 differing elements |
+| **2** | NEW — the **cached-decode path** against the oracle, logits at **every** position assembled from the cached path alone (a 1-token prefill, then one cached decode step per remaining position) | `gpt2_tool --dump-logits --via-decode`, all four rows | **PASS.** Max absolute divergence 3.967285e-04 / 4.272461e-04 / 4.425049e-04 / **7.019043e-04**; top-1 agreement at **every** position of all four rows; relative statistics reported and **not gating**, as in Stage 3. This divergence enters the D2 lower bound below |
+| **3** | The cached-path matrix against the **prefill** matrix of the same row, position by position | same run | **BIT FOR BIT on every row. 0 differing elements of 12,061,680**, maximum absolute difference **0** |
+| **4** | The cached step against the **no-cache step** at the same context | `tests/test_model.c` at 5 contexts; **and asserted inside the timing driver** before each cached decode configuration's warmup | **BIT FOR BIT.** 0 differing elements, max abs difference 0. The driver's pre-warmup assertion **PASSED at c = 32, 64 and 128** over all 50,257 logits — so no cached configuration was timed before it was proven to compute the same answer |
+| **5** | Causality through the cached path, **non-vacuously** | `tests/test_model.c`, reduced to 7 tokens | **PASS.** Changing the token at position 6 moved **no** logit at any earlier position (0 differing over 6 positions × 50,257) **and** moved 50,257 logits at position 6, so the check cannot pass vacuously. **The unit test is the only coverage**: `gpt2_tool` cannot take an explicit token-id sequence as input, so the j = 24 on d3_32 run was not possible and was not done |
+| **6** | **32** greedily generated tokens from `d3_16`, three producers | `tests/test_reference_impl.py --greedy32`, two CTest entries | **PASS. All three EXACTLY equal over all 48 ids** — engine cached path, engine no-cache path, and the oracle's own greedy generation. Reduced relative to n_ctx = 1024 and stated as reduced. 32 rather than Stage 3's 3 because a cache fault appearing only after several appends is invisible to a 3-token check |
+| **7** | Cache state restoration, which the driver relies on | `tests/test_model.c` | **PASS.** A step, a length restoration, then the same step again give **bit-identical** logits (0 differing), **and** the cache contents at positions 0..c-2 are **BYTE-identical** before and after across all 24 buffers. The second half is the one that matters: a step corrupting an earlier cached position would still give the right answer once |
+| **8** | Bounds | `tests/test_model.c`, `tests/test_kv_cache.c` | **PASS.** An append at capacity returns the error code and leaves **every byte unchanged** (compared against a copy); a decode at a context beyond capacity is refused **before any arithmetic**; a cache-mode prefill longer than capacity is refused; a restoration beyond capacity is refused; a cached step whose cache holds the wrong number of positions is refused rather than answered from the wrong context; cache mode with no cache allocated is refused rather than faulted |
+| **9** | Footprint | `tests/test_kv_cache.c`, asserted and reported | **PASS.** Allocated bytes equal `n_layer × 2 × capacity × n_embd × 4` computed from the config at run time, at three capacities. At capacity 1024 that is exactly **75,497,472** |
+| **10** | Attention weights sum to 1 within 1e-5 in the **cached** path, every head, layer and step | `tests/test_model.c`, reduced to 7 tokens | **PASS.** 1,008 rows checked (12 layers × 12 heads × 7 steps), min **0.999999937**, max **1.000000060** |
+| **11** | Every existing test still passes unmodified | full suite | **PASS. 25 of 25**, including `test_gemm_naive`'s scalar-codegen assertions read from the generated listing: **0 ymm registers, 0 packed floating-point arithmetic, 40 scalar floating-point instructions**. `src/gemm/gemm_naive.c`, `src/gemm/gemm.h` and `tests/test_gemm_naive.c` are **byte-identical to `main`** and the compiler flags are unchanged |
+
+**One carried-forward value disagrees with the re-run, and the re-run wins.** The stage prompt states the scalar-codegen assertion as "20 scalar arithmetic instructions". The live test asserts *presence* of scalar arithmetic rather than an exact count, and reports **40**. The disagreement is stated; nothing was changed to reconcile it.
+
+**The pre-change comparison.** Before the first edit to `src/`, the main-branch build's prefill logits for the `test_model` probe prompt at 7 tokens were dumped outside the repository: `C:\Users\saket\tie_stage4_prechange\prechange_testmodel_T7.bin`, 1,407,212 bytes, **SHA-256 `138d48cab6a03262ed01d9c33f5941fa6671509c409f41ab0f5179cb1b10f583`**. `tests/test_model.c` asserts the no-cache path reproduces that dump's float payload bit for bit, by FNV-1a 64 = **`0x344664b8843fccf8`**, after first asserting the prompt still encodes to the same seven ids. **It does.** The no-cache path is the pre-change engine, not merely something that resembles it.
+
+#### D2 — RE-DERIVED under the corrected rule (DECISION A)
+
+**`D2_MAX_ABS_LOGIT_DIFF = 2.3e-03`**, superseding Stage 3's `6e-03`. The authoritative statement of the rule and the full arithmetic is `BENCHMARK_PROTOCOL.md` §5 under "Amended by Stage 4 on 2026-10-05"; what follows is the measurement it rests on and the outcome.
+
+**Why the rule was corrected rather than the value adjusted.** Stage 3 evaluated both of its bounds **at the longest D3 length**, on the premise that the decision margin degrades with length. In the same section Stage 3 established that this premise is false for this prompt set — the four rows are independent prose, not nested prefixes, so each row's margin minimum is a property of its own text, and the set-wide minimum falls at **L = 32, position 11**, not at L = 128. Evaluating the upper bound at the longest length therefore used a margin **5.6×** larger than the one the gate must respect, and the committed `6e-03` failed its own condition (b) against the set-wide minimum at **1.30×** where 3× is required.
+
+**The inputs, from this stage's own measurement, not Stage 3's.**
+
+| Quantity | Value | Provenance |
+|---|---|---|
+| Set-wide maximum absolute divergence, over **both** engine paths | **7.019043e-04** (L = 128) | `[measured]` this stage, prefill path **and** cached-decode path, all positions of all four rows |
+| Set-wide minimum reference top-1/top-2 margin | **7.812500e-03** at **d3_32 position 11** | `[measured]` this stage. **Reproduced exactly against Stage 3's figure**, which is what licenses its use — had the oracle not reproduced itself the derivation would have stopped |
+
+Taking the divergence over both paths does **not** raise it: the two paths agree bit for bit (check 3), so the cached-decode path's divergence is identical to the prefill path's at every row. That is a result worth stating rather than a technicality — the lower bound is unchanged by the addition of a whole new engine path, because the new path computes the same floats.
+
+**The arithmetic.** `[derived]`, shown inline:
+
+- Lower bound: `3 × 7.019043e-04` = **2.105713e-03**
+- Upper bound: `7.812500e-03 / 3` = **2.604167e-03**
+- Window: `7.812500e-03 / 7.019043e-04` = **11.130×**, against the required minimum of 9. **The window is OPEN.** (The two stated conditions coincide at that minimum: `lower < upper` is `3d < m/3` is `m/d > 9`.)
+- Geometric mean: `sqrt(2.105713e-03 × 2.604167e-03)` = **2.341715e-03**
+- Rounding: **no one-significant-figure value lies inside** the window — 2e-03 is below the lower bound, 3e-03 above the upper. At two significant figures the candidates inside are **2.2e-03, 2.3e-03, 2.4e-03, 2.5e-03, 2.6e-03**. Nearest the geometric mean in **log** distance is **2.3e-03** (0.0180, against 0.0246 for 2.4e-03). The safety bound chose the precision; the rounding did not choose the safety bound.
+- **Achieved factors: `2.3e-03 / 7.019043e-04` = 3.28× above the observed divergence, and `7.812500e-03 / 2.3e-03` = 3.40× below the minimum margin.** Both clear 3×, which `6e-03` did not on the upper side.
+
+**Files amended in place:** `BENCHMARK_PROTOCOL.md` §5 — the single machine-readable line changed to `D2_MAX_ABS_LOGIT_DIFF = 2.3e-3`, with exactly one such line remaining in the document, and the Stage 3 derivation retained as provenance with each superseded statement marked; `PERSISTENT.md` §1 D2 — new value, new definition, pointer to §5 for the arithmetic.
+
+**The gate was then re-run so that it READS the amended value, and it parses and gates on it: PASS.** Recorded against **both** values, from one measurement evaluated at two thresholds (the gate is a pure function of the statistics and the threshold, so no engine run was repeated):
+
+| Threshold | prefill, no-cache | prefill, cache | cached-decode path |
+|---|---|---|---|
+| `6e-03` (superseded) | **PASS** | **PASS** | **PASS** |
+| `2.3e-03` (in force) | **PASS** | **PASS** | **PASS** |
+
+**The parser.** `bench/correctness.py` already accepted two significant figures; what it did **not** do was refuse a document carrying two machine-readable lines — it silently took the first. That is now an error naming the file, because a gate that runs against whichever threshold happens to appear first in a document is not reading the document. Unit tests assert `2.3e-3` and `6e-3` both parse, that two such lines are refused, and that the corrected rounding rule returns `2.3e-03` for the Stage 3 inputs, returns a one-significant-figure value where one lies inside the window, reports a closed window as closed and selects no value, and reports a window narrower than the required minimum.
+
+**The dates.** The documents carried two dates for the Stage 3 D2/D3 work and both are correct, for different events. Determined from the artifacts: Stage 3 is **one** commit, `f924196`, authored `2026-10-05T00:49:14-07:00`; the correctness run the D2/D3 resolution rests on is stamped `2026-10-05T04:43:45Z` = **2026-10-04 21:43 local** at this machine's UTC-07:00; the clean build `04:38:53Z` = 2026-10-04 21:38 local; the harness timed set `2026-10-05T07:39:58Z` = **2026-10-05 00:39 local**; the cuBLAS run `07:40:52Z` = 00:40 local. **The session spanned local midnight.** So `2026-10-04` correctly dates the D2/D3 resolution in local time — which is what the fixture header, §5 and §1 D3 carry — and `2026-10-05` correctly dates the timed set and the session close, which is what the Stage 3 entry, the §6 log and "Last updated" carry. In UTC every one of these events falls on 2026-10-05. **No date was changed.** A clause naming the event and the time zone was added at §5 and at §1 D3. **The fixture needs no erratum** — its date is correct — and it is byte-identical to the blob Stage 3 committed, `37c5501cc3fa9604ca20688bfda18a604559d2b5`.
+
+#### The KV cache footprint, as allocated and as derived
+
+**Derived from shapes**, `[derived]`: per position per layer, K and V each `n_embd` float32 = `2 × 768 × 4` = **6,144 B**; across 12 layers, **73,728 B per position**. Footprint = `n_layer × 2 × capacity × n_embd × 4`.
+
+| Context | Derived bytes | Allocated bytes, as reported by the engine | | 
+|---|---|---|---|
+| c = 32 | 2,359,296 (2.25 MiB) | **2,359,296** `[measured]` | from the `d32` records |
+| c = 48 | 3,538,944 (3.375 MiB) | **3,538,944** `[measured]` | from `gpt2_tool --footprint` during the greedy-32 check |
+| c = 64 | 4,718,592 (4.50 MiB) | **4,718,592** `[measured]` | from the `d64` records |
+| c = 128 | 9,437,184 (9.00 MiB) | **9,437,184** `[measured]` | from the `d128` and `p128` records |
+| c = 1024 (full n_ctx) | 75,497,472 (72.0 MiB) | **75,497,472** `[measured]` | asserted in `tests/test_kv_cache.c` from the arguments |
+
+Derived and allocated agree exactly at every capacity. At the full context the cache is **15.2% of the 497,759,232-byte parameter set** (`75,497,472 / 497,759,232 = 0.15168`), and it outgrows the 8 MiB L3 between c = 64 and c = 128. **With the switch at no-cache the resident cache footprint is exactly 0 bytes** — the cache is allocated lazily by `model_kv_reserve`, so a model that never asks for one holds none, which `tests/test_model.c` asserts directly rather than inferring.
+
+#### Measurement — PREFILL
+
+25 warmup, 30 timed samples, every configuration. Every figure in this table is read from `bench/results/stage4/stage4_harness.json`. `[measured]`. Cache and no-cache members of each pair side by side; **prefill and decode are never combined into one figure anywhere in this entry.**
+
+| L | path | samples | median (ms) | min | max | std dev (ms) | sd as % of median | construction | probe (ms) | R | repeat_applied | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 16 | **cache** | 30 | **3951.321** | 3888.228 | 4050.282 | 45.97 | **1.163%** | single_iteration | 4592.5 | 1 | 1 | **VALID** |
+| 16 | nocache | 30 | **4011.716** | 3945.895 | 4179.045 | 54.75 | **1.365%** | single_iteration | 4295.8 | 1 | 1 | **VALID** |
+| 32 | **cache** | 30 | **7899.536** | 7723.028 | 8094.326 | 91.56 | **1.159%** | single_iteration | 8667.3 | 1 | 1 | **VALID** |
+| 32 | nocache | 30 | **7954.613** | 7822.179 | 8244.753 | 102.49 | **1.288%** | single_iteration | 8483.2 | 1 | 1 | **VALID** |
+| 64 | **cache** | 30 | **16081.705** | 15722.659 | 16405.540 | 169.95 | **1.057%** | single_iteration | 16745.8 | 1 | 1 | **VALID** |
+| 64 | nocache | 30 | **16187.394** | 15762.177 | 16708.317 | 197.85 | **1.222%** | single_iteration | 15983.7 | 1 | 1 | **VALID** |
+| 128 | **cache** | 30 | **33668.358** | 32898.820 | 35567.091 | 619.64 | **1.840%** | single_iteration | 36689.3 | 1 | 1 | **VALID** |
+| 128 | nocache | - | - | - | - | - | - | - | - | - | - | **NOT RUN by decision** |
+
+**All seven prefill configurations are VALID.** `L = 128` cache is the **first VALID observation this project has at that length** - Stage 3's attempt was INVALID at 5.723% - and it has **no baseline of either kind**: no Stage 3 VALID figure to compare against, and no in-session no-cache control, which was declined by decision because it would have added about 26 minutes to the longest-running configuration class on this machine.
+
+**The prefill falsification test - the one DECISION B's in-session control exists to make possible:**
+
+| L | cache (ms) | nocache (ms) | in-session difference | against the 4.4% floor |
+|---|---|---|---|---|
+| 16 | 3951.321 | 4011.716 | **-1.505%** | **INSIDE** |
+| 32 | 7899.536 | 7954.613 | **-0.692%** | **INSIDE** |
+| 64 | 16081.705 | 16187.394 | **-0.653%** | **INSIDE** |
+
+**Every VALID length is inside the floor, so the prediction's prefill falsification condition is NOT met** and the correct statement is **"no measurable change"**, with the floor named: 4.4%, the p90 of the Stage 0 run-to-run spread, carrying its three standing qualifications - small-M and decode-shaped work is materially noisier, it was measured under irreducible background load, and it has not been re-derived since Stage 0 while the process set has changed (section 8 W5), which this session's heavier set makes more pointed rather than less.
+
+**A diagnostic observation, labelled DIAGNOSTIC and not a claim.** The cache member is the faster of the pair at **all three** lengths, by 0.65% to 1.51%. Under pure noise the sign would be expected to vary. The cache only adds stores, so a genuine speedup from adding work is not a mechanism this stage can offer. There is a confound the design does not separate: **within every pair the cache configuration ran first**, so any within-chunk warming or load drift folds into the same sign. The paired design controls for drift **between** pairs, not for order **within** a pair. Three pairs is too few to separate the two, no mechanism is proposed, and **the reported conclusion remains "no measurable change" at every length.** An order-reversed repeat of each pair would separate them and is the next stage's to take if it wants the sign.
+
+#### Measurement — DECODE
+
+One step per timed bracket. For the cached configurations the cache was filled with the first c-1 tokens **outside every bracket**, and the cache length was restored to c-1 **outside the bracket** before each timed iteration, so every sample measures the same context (`cache_state_construction: "length restored outside bracket"`).
+
+| c | path | samples | median (ms) | min | max | std dev (ms) | sd as % of median | construction | probe (ms) | R | repeat_applied | cached positions | cache bytes | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 32 | **cache** | 30 | **242.571** | 237.887 | 414.381 | 34.38 | **14.173%** | single_iteration | 237.3 | 1 | 1 | 31 | 2,359,296 | **INVALID** |
+| 32 | nocache | 30 | **6716.263** | 6562.532 | 7164.924 | 164.02 | **2.442%** | single_iteration | 6880.7 | 1 | 1 | - | 0 | **VALID** |
+| 64 | **cache** | 30 | **251.123** | 248.854 | 440.343 | 47.88 | **19.065%** | single_iteration | 250.5 | 1 | 1 | 63 | 4,718,592 | **INVALID** |
+| 64 | nocache | 30 | **13726.551** | 13506.509 | 14315.826 | 184.62 | **1.345%** | single_iteration | 14265.3 | 1 | 1 | - | 0 | **VALID** |
+| 128 | **cache** | 30 | **260.445** | 253.897 | 444.943 | 37.71 | **14.477%** | single_iteration | 254.3 | 1 | 1 | 127 | 9,437,184 | **INVALID** |
+| 128 | nocache | 30 | **27815.349** | 27572.212 | 28230.409 | 187.94 | **0.676%** | single_iteration | 27762.9 | 1 | 1 | - | 0 | **VALID** |
+
+**All three CACHED decode configurations are INVALID. All three no-cache controls are VALID.** The cached medians are reported with their INVALID verdict attached everywhere they appear below, and **none was retried, averaged away, or rescued by a robust statistic.**
+
+**The in-session change the cache produces** - computed from an **INVALID** cached median against a **VALID** no-cache median, and labelled so wherever it is used. It is reported as a self-relative ratio against the project's own baseline and as intermediate detail, **never as a headline figure**:
+
+| c | cached (INVALID) | no-cache (VALID) | ratio |
+|---|---|---|---|
+| 32 | 242.571 ms | 6716.263 ms | **27.69x** |
+| 64 | 251.123 ms | 13726.551 ms | **54.66x** |
+| 128 | 260.445 ms | 27815.349 ms | **106.80x** |
+
+The ratio roughly doubles with each doubling of context, which is the expected shape: the numerator is near-constant while the denominator grows with c.
+
+#### Measurement — ISOLATED GEMM
+
+Unchanged shapes from Stage 2 and Stage 3: `M = 32, K = 768`, only `N` moving, so the two records differ in the size of the streamed operand and in nothing else. These configurations are not probed by the driver - they are fixed shapes with no fixture row and no engine path - so they carry no construction record, and the driver reported `repeat_applied = 1` for both, which the harness checked.
+
+| shape | N | samples | median (ms) | min | max | std dev (ms) | sd as % of median | repeat_applied | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| `attn.c_proj`, B = 2.25 MiB, L3-resident | 768 | 30 | **23.370** | 23.142 | 30.734 | 1.39 | **5.951%** | 1 | **INVALID** |
+| `mlp.c_fc`, B = 9.00 MiB, exceeds the 8 MiB L3 | 3072 | 30 | **130.986** | 124.536 | 154.812 | 10.24 | **7.815%** | 1 | **INVALID** |
+
+**Both are INVALID**, where both were VALID in Stage 3 (21.323 ms at 0.272%, 120.753 ms at 0.389%). Same binary, same shapes, same construction; a heavier process set.
+
+#### The decode curve — what the cache did to the shape
+
+The claim Stage 4 exists to test, from `TECHNICAL_SPEC.md` section 3: *decode cost per token drops from growing with sequence length to roughly constant*. `[derived]`, from the medians above:
+
+| path | c = 32 | c = 64 | c = 128 | c=128 / c=32 | per doubling | validity of the endpoints |
+|---|---|---|---|---|---|---|
+| **cache** | 242.571 | 251.123 | 260.445 | **1.0737** | **1.0362** | INVALID / INVALID / INVALID |
+| nocache | 6716.263 | 13726.551 | 27815.349 | **4.1415** | **2.0351** | VALID / VALID / VALID |
+
+**The shape changed, and by how much is measurable even though the cached endpoints are INVALID.** The no-cache path grows at **2.0351 per doubling** across VALID endpoints, which reproduces Stage 3's measured 2.0014 per doubling on the same configurations to within 1.7%. The cached path grows at **1.0362 per doubling** from INVALID endpoints. The cache therefore replaced a term that doubles with context by one that rises a few percent across a factor of four in context.
+
+**What cannot be claimed from this.** The cached ratio **1.0737** rests on two INVALID medians, so it is **not** a VALID measurement of the curve and it is not reported as one. What the cached configurations do establish, because dispersion does not move a median by a factor of four, is that the context-proportional term is **gone**: a surviving O(c) term would have put c = 128 near four times c = 32, and the measured separation between those medians is 7.4%, not 314%.
+
+#### Derived throughput, on NAMED FLOP bases, as fractions of the measured scalar ceiling
+
+The ceiling is the **measured** scalar FP32 figure **8.565 GFLOP/s** (`HARDWARE.md` section 2, Stage 0b reference run 2). The vectorised AVX2 peak of 48.411 GFLOP/s does **not** appear as a denominator anywhere in this stage - this is scalar code and that ceiling is Stage 6's framing (section 8 W8) - and neither does the single-channel theoretical 23.464 GB/s, which is derived from part numbers (section 8 W7).
+
+**The attention FLOP basis is named at both ends, per section 8 W13**, because the two paths count it differently and a comparison across them is not like for like unless the basis is stated: the **cached** step performs one query row over c keys, so there is no discarded upper triangle and its performed-FLOP count is **36,864 x c**; the **no-cache** path computes the full T x T square and masks it afterwards, so its count stays on Stage 2's **36,864 x c^2** basis. W13 is not changed by this stage.
+
+| configuration | FLOP basis | FLOPs | GFLOP/s | fraction of 8.565 | verdict |
+|---|---|---|---|---|---|
+| prefill L = 16, cache | L x 247,064,064 + 36,864 x L^2 | 3,962,462,208 | 1.0028 | **0.1171** | VALID |
+| prefill L = 16, nocache | L x 247,064,064 + 36,864 x L^2 | 3,962,462,208 | 0.9877 | **0.1153** | VALID |
+| prefill L = 32, cache | L x 247,064,064 + 36,864 x L^2 | 7,943,798,784 | 1.0056 | **0.1174** | VALID |
+| prefill L = 32, nocache | L x 247,064,064 + 36,864 x L^2 | 7,943,798,784 | 0.9986 | **0.1166** | VALID |
+| prefill L = 64, cache | L x 247,064,064 + 36,864 x L^2 | 15,963,095,040 | 0.9926 | **0.1159** | VALID |
+| prefill L = 64, nocache | L x 247,064,064 + 36,864 x L^2 | 15,963,095,040 | 0.9861 | **0.1151** | VALID |
+| prefill L = 128, cache | L x 247,064,064 + 36,864 x L^2 | 32,228,179,968 | 0.9572 | **0.1118** | VALID |
+| decode c = 32, **cache** | 247,064,064 + 36,864 x c (causal row) | 248,243,712 | 1.0234 | **0.1195** | INVALID |
+| decode c = 64, **cache** | 247,064,064 + 36,864 x c (causal row) | 249,423,360 | 0.9932 | **0.1160** | INVALID |
+| decode c = 128, **cache** | 247,064,064 + 36,864 x c (causal row) | 251,782,656 | 0.9667 | **0.1129** | INVALID |
+| decode c = 32, nocache | c x 169,869,312 + 36,864 x c^2 + 77,194,752 (full square) | 5,550,761,472 | 0.8265 | **0.0965** | VALID |
+| decode c = 64, nocache | c x 169,869,312 + 36,864 x c^2 + 77,194,752 (full square) | 11,099,825,664 | 0.8086 | **0.0944** | VALID |
+| decode c = 128, nocache | c x 169,869,312 + 36,864 x c^2 + 77,194,752 (full square) | 22,424,446,464 | 0.8062 | **0.0941** | VALID |
+| isolated GEMM N = 768 | 2 x M x N x K | 37,748,736 | 1.6153 | **0.1886** | INVALID |
+| isolated GEMM N = 3072 | 2 x M x N x K | 150,994,944 | 1.1528 | **0.1346** | INVALID |
+
+**This is the ceiling-referenced figure for this CPU stage**, and it is the only kind available: **no headline ratio from `BENCHMARK_PROTOCOL.md` section 7 is quoted, because section 7 defines the decode headline against measured GPU bandwidth and the prefill headline against cuBLAS at the engine's shapes, and this stage's engine runs on the CPU.** The results file records that absence with the same reason.
+
+**The reading.** A cached decode step achieves **0.1129 to 0.1195** of the measured scalar ceiling, and a prefill token achieves **0.1118 to 0.1174** - the same band. That is the stage's substantive efficiency result: the cached step is not a different kind of work from a prefill token, it is the same work done once instead of c times. The no-cache decode path sits lower, at **0.0941 to 0.0965**, which is the Stage 2 and Stage 3 observation reproduced.
+
+#### Comparison against the Stage 3 baseline, with the W14 shift stated alongside
+
+`--compare bench/results/stage3/stage3_harness.json`. **Every figure in this table carries the section 8 W14 cross-session shift**, and the comparison does not control the process set because the environment fingerprint has no process-set field - which is W14's entire subject. Each comparison record in the results file carries `process_set_gated: false` and a pointer to W14 so the limitation travels inside the artifact.
+
+| configuration | Stage 3 (ms) | Stage 4 (ms) | change | the check's verdict |
+|---|---|---|---|---|
+| prefill|L=16 | 3537.051 | 4011.716 | **+13.420%** | REGRESSION |
+| prefill|L=32 | 7058.383 | 7954.613 | **+12.697%** | REGRESSION |
+| prefill|L=64 | 14121.470 | 16187.394 | **+14.630%** | REGRESSION |
+| decode|c=32 | 5925.150 | 6716.263 | **+13.352%** | REGRESSION |
+| decode|c=128 | 23735.411 | 27815.349 | **+17.189%** | REGRESSION |
+
+**Five configurations were flagged REGRESSION and not one of them is a code regression.** The no-cache path is the Stage 2 path unchanged, and this stage proved that rather than asserting it: its prefill logits are **bit-identical to the pre-change engine's dump** (FNV-1a 64 `0x344664b8843fccf8`, asserted in `tests/test_model.c`), and `src/gemm/gemm_naive.c`, `src/gemm/gemm.h` and the compiler flags are byte-identical to `main`. The engine did not get slower; **this session is slower**, by +12.7% to +17.2% on code that computes the same floats.
+
+The direction is consistent with the process set: ten editor processes against Stage 3's one, Logitech Options+ never closed, OneDrive resident, on a machine with 8,012 MB of RAM that killed the run three times for want of memory. **That is a candidate, not an established cause** - no process-set field exists in the fingerprint to gate on and no CPU counters were collected, so the attribution is not established at the counter level.
+
+**W14's own table, recomputed from the two results files** as the decision required, rather than copied from the prompt that carried it:
+
+| configuration | Stage 2 (ms) | Stage 3 (ms) | change | note |
+|---|---|---|---|---|
+| prefill L = 32 | 7765.285 | 7058.383 | **-9.10%** | prior INVALID |
+| prefill L = 64 | 15520.584 | 14121.470 | **-9.01%** |  |
+| decode c = 32 | 6561.243 | 5925.150 | **-9.69%** |  |
+| decode c = 64 | 13193.109 | 11858.971 | **-10.11%** | current INVALID |
+| decode c = 128 | 26842.550 | 23735.411 | **-11.58%** |  |
+| isolated GEMM N = 768 | 24.056 | 21.323 | **-11.36%** |  |
+| isolated GEMM N = 3072 | 124.149 | 120.753 | **-2.74%** | prior INVALID |
+
+**Two cells differ in the last digit from the figures the stage prompt carried** - prefill L = 64 at **-9.01%** against -9.02%, and decode c = 32 at **-9.69%** against -9.70%. The files win and the difference is stated. The remaining five agree exactly.
+
+**Where no comparison was made, and why.** No comparison is reported at **prefill L = 128** or **decode c = 64**, because no Stage 3 baseline exists at either - both were INVALID there. The in-session no-cache decode at c = 64 measured here (13726.551 ms, VALID) is a **Stage 4 measurement and is labelled as such**; it does not retroactively become a Stage 3 baseline. Every cache-path configuration was refused by the comparison because it does not appear in the prior file, which is the correct refusal: **the cached-against-uncached change is this stage's RESULT, reported as that above and labelled, not as a regression against Stage 3.**
+
+#### Every INVALID configuration, named, with what it was and what it was not
+
+**Five of fifteen configurations are INVALID**, each because its standard deviation exceeded 5% of its median. Each is reported as INVALID, **none was retried, none was averaged away, and no diagnostic statistic was used to convert one**:
+
+| configuration | median (ms) | sd as % of median | samples above 1.2x median | max / median | what it was |
+|---|---|---|---|---|---|
+| `decode|c=32|cache` | 242.571 | **14.173%** | 2 of 30 | 1.71 | a tight baseline punctured by one or more large events |
+| `decode|c=64|cache` | 251.123 | **19.065%** | 2 of 30 | 1.75 | a tight baseline punctured by one or more large events |
+| `decode|c=128|cache` | 260.445 | **14.477%** | 3 of 30 | 1.71 | a tight baseline punctured by one or more large events |
+| `isolated_gemm|M=32,N=768,K=768` | 23.370 | **5.951%** | 1 of 30 | 1.32 | a tight baseline punctured by one or more large events |
+| `isolated_gemm|M=32,N=3072,K=768` | 130.986 | **7.815%** | 0 of 30 | 1.18 | broad dispersion with no single dominant spike |
+
+**The mechanism, quantified, and it is W3's.** Section 8 W3 derives that a single interruption of relative size `delta` hitting k of n samples produces `relative sd = delta x sqrt(k(n-k)/(n(n-1)))`. For the three cached decode configurations:
+
+| configuration | largest sample / median | k (samples above 1.2x) | W3's predicted sd% | measured sd% |
+|---|---|---|---|---|
+| `decode|c=32|cache` | 1.71 | 2 | 18.0% | **14.173%** |
+| `decode|c=64|cache` | 1.75 | 2 | 19.1% | **19.065%** |
+| `decode|c=128|cache` | 1.71 | 3 | 21.6% | **14.477%** |
+
+The closed form is evaluated here with `delta` taken from the LARGEST sample, which assumes all k interruptions are that size, so it is an upper estimate whenever k > 1. It matches almost exactly where k = 2 and both spikes are near the maximum (`decode|c=64|cache`: 19.1% predicted against 19.065% measured) and **overpredicts** where the k samples are spread below it (`decode|c=128|cache`: 21.6% against 14.477%). Read as an upper bound rather than a point estimate, it brackets every measured figure - which is the clearest evidence this project has that **W3 describes the real mechanism** rather than a worst case. What is new is the SCALE: W3 was derived from M = 1 GEMM configurations with medians of **30 to 90 microseconds**, and it is reproduced here at brackets of **242 to 260 milliseconds** - four orders of magnitude longer. The interruption on this machine is large in absolute terms (roughly 180 ms), not merely large relative to a microsecond kernel.
+
+**W3's own remedy was not available, and that is the finding.** W3 prescribes a batched construction for configurations below the 10 ms per-sample floor. Every cached decode probe was **237 to 254 ms**, more than twenty times the floor, so the selector correctly chose `single_iteration` with `R = 1` - there is nothing to batch, and batching anyway would have amortised away the very per-iteration distribution the 5% rule tests. **A configuration can therefore be far above W3's floor and still fail the dispersion rule**, when the machine's absolute interruption magnitude is a large fraction of the bracket. That is a gap in W3's framing which Stage 4 found by measurement, and it is recorded here rather than papered over: the honest options are a quieter machine or a longer bracket, and this session could obtain neither - the operator was remote and could not close a single process.
+
+**What the INVALID verdicts do and do not cost.** They cost the stage a VALID *latency* for the cached decode step, and with it any VALID figure for the decode curve. They do **not** cost the stage its correctness result, which is bit-exact and independent of timing, and they do not cost the *order of magnitude* of the change: dispersion of 14 to 19% cannot move a median by the factor of 27 to 107 that separates the cached path from its in-session control. The structural claim - that decode cost stopped growing with context - survives; the precise latency does not.
+
+#### The regression comparison's own output, every refusal and its reason
+
+| configuration | comparable | reason |
+|---|---|---|
+| `prefill|L=16` | yes | compared: +13.420%, REGRESSION |
+| `prefill|L=32` | yes | compared: +12.697%, REGRESSION |
+| `prefill|L=64` | yes | compared: +14.630%, REGRESSION |
+| `decode|c=32` | yes | compared: +13.352%, REGRESSION |
+| `decode|c=128` | yes | compared: +17.189%, REGRESSION |
+| `prefill|L=16|cache` | **no** | the configuration does not appear in the prior file |
+| `prefill|L=32|cache` | **no** | the configuration does not appear in the prior file |
+| `prefill|L=64|cache` | **no** | the configuration does not appear in the prior file |
+| `decode|c=32|cache` | **no** | the configuration does not appear in the prior file |
+| `decode|c=64|cache` | **no** | the configuration does not appear in the prior file |
+| `decode|c=64` | **no** | the prior configuration is INVALID |
+| `decode|c=128|cache` | **no** | the configuration does not appear in the prior file |
+| `isolated_gemm|M=32,N=768,K=768` | **no** | the current configuration is INVALID |
+| `isolated_gemm|M=32,N=3072,K=768` | **no** | the current configuration is INVALID |
+| `prefill|L=128|cache` | **no** | the configuration does not appear in the prior file |
+
+Ten refusals and five comparisons. **The refusals are the check working, not failing**: seven cache-path configurations have no counterpart in the prior file because the cache did not exist then; `decode|c=64` is refused because the prior side is INVALID; and both isolated GEMMs are refused because the current side is INVALID. Every refusal and every comparison carries `process_set_gated: false` and the W14 pointer.
+
+**The W3 confirmation gate reported `all_confirmed: true` over all fifteen configurations**, with `repeat_applied == 1` on every one. No bracket was divided by any R, the batched path was not exercised by a timed run (`batched_path_exercised_by_a_timed_run: false`), and the probe range across the set was **237.3 ms to 36,689.3 ms** - the whole set sits above the 10 ms floor by between 24x and 3,669x.
+
+#### Within-run drift and dispersion character — DIAGNOSTIC
+
+**DIAGNOSTIC ONLY.** These figures characterise the distribution. They never replace a reported median and they never convert an INVALID run into a valid one. Recomputed here from the retained raw per-sample arrays rather than read from the driver's metadata, because section 8 **W15** records that the driver's metadata arrays silently dropped one diagnostic counter at Stage 4's field count; the stored first- and second-half medians were verified against this recomputation and agree exactly.
+
+| configuration | first-half median (ms) | second-half median (ms) | drift | verdict |
+|---|---|---|---|---|
+| `prefill|L=16|cache` | 3960.354 | 3950.972 | **-0.237%** | VALID |
+| `prefill|L=16` | 4025.653 | 3995.623 | **-0.746%** | VALID |
+| `prefill|L=32|cache` | 7872.365 | 8002.151 | **+1.649%** | VALID |
+| `prefill|L=32` | 8002.688 | 7902.281 | **-1.255%** | VALID |
+| `prefill|L=64|cache` | 16076.453 | 16094.358 | **+0.111%** | VALID |
+| `prefill|L=64` | 16190.315 | 16184.473 | **-0.036%** | VALID |
+| `prefill|L=128|cache` | 33647.820 | 33820.292 | **+0.513%** | VALID |
+| `decode|c=32|cache` | 243.477 | 241.316 | **-0.888%** | INVALID |
+| `decode|c=32` | 6636.554 | 6780.688 | **+2.172%** | VALID |
+| `decode|c=64|cache` | 250.982 | 251.264 | **+0.113%** | INVALID |
+| `decode|c=64` | 13672.716 | 13744.746 | **+0.527%** | VALID |
+| `decode|c=128|cache` | 260.759 | 257.852 | **-1.115%** | INVALID |
+| `decode|c=128` | 27870.310 | 27768.077 | **-0.367%** | VALID |
+| `isolated_gemm|M=32,N=768,K=768` | 23.603 | 23.277 | **-1.381%** | INVALID |
+| `isolated_gemm|M=32,N=3072,K=768` | 134.815 | 129.304 | **-4.087%** | INVALID |
+
+**No configuration drifts in a way that suggests sustained thermal decay**: the largest magnitude is -4.087% on the isolated GEMM at N = 3072, which is also INVALID on dispersion, and every VALID configuration drifts by less than 2.2%. The dispersion failures are therefore **spikes, not trends** - which the per-sample counts above confirm directly - and the distinction matters because a trend would implicate the machine's thermal state while a spike implicates the process set.
+
+#### CPU frequency during the set, from the live source only
+
+The only live CPU frequency source on this machine is the PDH counter `\Processor Information(_Total)\% Processor Performance`, at about 12.5 microseconds per probe (section 8 W6, established by Stage 0b). The other two sources sampled are recorded as static and are **not** used as measurements: `% Performance Limit` and `\Processor Information(_Total)\Processor Frequency`. **No CPU package temperature source exists on this machine**, so the frequency axis is the only one available.
+
+| chunk | samples | % Processor Performance: min | median | max | % Performance Limit (min/median/max) | Processor Frequency (static) |
+|---|---|---|---|---|---|---|
+| `p16` | 14631 | 131.84 | **165.32** | 200.04 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `p32` | 28795 | 114.95 | **160.57** | 195.71 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `p64` | 58287 | 124.50 | **159.65** | 188.51 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `d32` | 13620 | 118.79 | **163.73** | 189.41 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `d64` | 27232 | 124.93 | **158.35** | 199.34 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `d128` | 55270 | 103.02 | **156.04** | 203.27 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `gemm` | 494 | 122.15 | **161.37** | 199.06 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+| `p128` | 60531 | 111.44 | **156.75** | 200.75 | 100.00 / 100.00 / 100.00 | 2496 MHz |
+
+**Two readings matter.** First, `% Processor Performance` is a percentage of the 2496 MHz nominal, so a median of roughly 156 to 165% corresponds to about **3.9 to 4.1 GHz** - the part was in turbo throughout and never near its nominal clock. Second, and more useful as a run condition: **`% Performance Limit` held at exactly 100.00 across all 253,861 samples of all eight chunks**, minimum and maximum alike. **No CPU performance limit was asserted at any point during 2.28 hours of sustained single-core load.** That is positive evidence against a CPU thermal or power throttle as an explanation for either the dispersion failures or the cross-session shift, and it is the strongest statement this machine's instrumentation can make on the subject - it is not evidence about the GPU, whose clock was locked, nor about package temperature, which cannot be read here at all.
+
+The trace itself is a **run condition and is not committed**; it is written to `build/stage4_traces/` and the summary above is what the entry records.
+
+#### Counters, and what is therefore not established
+
+**No Nsight Compute counters.** `BENCHMARK_PROTOCOL.md` section 6 requires them for GPU stages from Stage 7 onward. This stage writes no kernel and its engine runs on the CPU.
+
+**No CPU hardware counters. `xperf` is available on this machine and was deliberately not used**, following the Stage 2 and Stage 3 precedent (section 8 **W4**, whose Status this stage does not change). `xperf -pmcsources` enumerates the live Comet Lake PMU, so the capability exists. The consequence is stated rather than hidden: **the counters that would distinguish an issue-rate limit from a cache-miss limit in the cached decode step were not collected, so the decode gap is unestablished at the counter level.**
+
+#### Gap
+
+The prediction was opened for the first time at this point, having been sealed since commit `b8543b4`. It is addressed as written; the derivation block is used only where it explains the prediction's reasoning.
+
+**Predicted against measured, every configuration the prediction names.**
+
+| configuration | predicted | measured | ratio | verdict of the measurement |
+|---|---|---|---|---|
+| decode c = 32, cached | 232 ms | **242.571 ms** | **1.046** | INVALID |
+| decode c = 64, cached | 233 ms | **251.123 ms** | **1.078** | INVALID |
+| decode c = 128, cached | 235 ms | **260.445 ms** | **1.108** | INVALID |
+| prefill L = 16, cache | 3537 ms | **3951.321 ms** | **1.117** | VALID |
+| prefill L = 32, cache | 7058 ms | **7899.536 ms** | **1.119** | VALID |
+| prefill L = 64, cache | 14121 ms | **16081.705 ms** | **1.139** | VALID |
+| prefill L = 128, cache | 28.5 s | **33.668 s** | **1.181** | VALID |
+| decode curve, c=128 / c=32 | 1.014 | **1.0737** | **1.059** | both endpoints INVALID |
+| decode curve, per doubling | 1.007 | **1.0362** | **1.029** | both endpoints INVALID |
+| KV footprint per position | 73,728 B | **73,728 B** | **1.000** | asserted |
+| KV footprint at c = 1024 | 75,497,472 B | **75,497,472 B** | **1.000** | asserted |
+| KV footprint as % of parameters | 15.2% | **15.168%** | **0.998** | derived |
+| prefill divergence vs oracle | 7.019043e-04 | **7.019043e-04** | **1.000** | measured |
+| D2 under the corrected rule | 2.3e-03 | **2.3e-03** | **1.000** | derived |
+| cached vs prefill logits | bit for bit | **bit for bit**, 0 of 12,061,680 | exact | measured |
+| cached vs no-cache step | bit for bit | **bit for bit**, 0 differing | exact | measured |
+
+**The prediction's own falsification conditions, each answered.**
+
+| condition the prediction set | met? | the measurement |
+|---|---|---|
+| *"The efficiency fraction was merely imprecise"* if every VALID cached decode median is within a factor of 2 of 232 ms, i.e. 116-464 ms | **cannot be evaluated as written** | **No cached decode median is VALID.** All three INVALID medians - 242.571, 251.123, 260.445 ms - do lie inside 116-464 ms, so the condition would have been satisfied had they been VALID, but the condition as written quantifies over VALID medians and there are none |
+| The model is wrong if the c=128 / c=32 cached ratio **exceeds 1.10** | **NOT met** | measured **1.0737**, below 1.10 - though from INVALID endpoints. No context-proportional work survived: a cache that was not consulted, or an O(c) per-step copy, would have produced a ratio near 4 |
+| The model is wrong if any VALID cached decode median **exceeds 696 ms** | **NOT met** | the largest cached median is 260.445 ms, and even the largest individual SAMPLE across all three configurations is 444.943 ms. The memory route did not bind and work was not being recomputed |
+| The model is wrong if any VALID cached decode median is **below 77 ms** | **NOT met** | the smallest cached median is 242.571 ms and the smallest individual sample is 237.887 ms. Nothing was accidentally vectorised |
+| The model is wrong if in-session paired prefill with and without cache writes differs by more than **4.4%** at any VALID length | **NOT met** | -1.505%, -0.692%, -0.653% at L = 16, 32, 64, all three VALID on both members. The largest is a third of the floor |
+
+**So: no falsification condition was met, and the one that would have confirmed the fraction cannot be evaluated because the configurations it quantifies over are INVALID.** That is the stage's central honest result and it is stated before any of the agreement below.
+
+**The mechanism, quantified where the measurements allow it.**
+
+*1. The efficiency fraction the prediction chose was very nearly right, and for the reason it gave.* The prediction's central fraction was **f = 0.125**, argued from the claim that a cached decode token has the per-token operation MIX of a prefill token rather than of an uncached decode step — the tied head is 31 percent of both — pulled down slightly because at M = 1 the L3-sized `c_attn` and `attn.c_proj` weights lose cross-row reuse. Measured, from the INVALID medians: **f = 0.1195, 0.1160, 0.1129** at c = 32, 64, 128. The prediction's upper bracket was the prefill fraction 0.1320 and its lower was the uncached decode fraction 0.1098; the measured values sit inside that bracket, nearer the centre than either edge.
+
+*2. The structural half of that argument is confirmed independently of the session's speed.* The prediction's reasoning rests on the cached step having prefill's operation mix. Measured in this session, a prefill token achieves **0.1159 to 0.1174** of the ceiling and a cached decode step achieves **0.1129 to 0.1195** — the same band — while the uncached decode path sits at **0.0941 to 0.0965**. The cached step behaves like a prefill token and not like the thing it replaced, which is what the prediction claimed and what justified reusing prefill's fraction rather than inventing one.
+
+*3. The absolute latencies are high by a factor the prediction anticipated, and the prediction named the mechanism.* Every measured figure is 4.6 to 18.1 percent above its predicted value. The prediction's derivation states that the Stage 2 and Stage 3 sessions measured the same binary about 10 percent apart and that *"these figures carry a condition uncertainty of that size on top of the fraction"*. This session is **+12.7 to +17.2 percent** slower than Stage 3 on bit-identical no-cache code, so the predicted values — taken from Stage 3's medians for prefill, and derived against Stage 3's fraction for decode — are high by almost exactly the condition shift the prediction warned about. **The prediction's model was better than its absolute numbers, and it said so in advance.** Had the in-session control not been built (DECISION B), this would have been indistinguishable from the cache costing prefill 13 percent, which is precisely the failure the control was added to prevent.
+
+*4. Prefill did not move, as predicted, and the bound the prediction used holds.* The prediction bounded the cache's added cost at prefill as **at most 0.019 percent of the bytes the pass already moves**, without using any DRAM bandwidth figure — 9,437,184 B of cache stores at L = 128 against at least 48,752,885,760 B the pass re-walks. Measured in-session: **-1.505, -0.692, -0.653 percent**, every one inside the 4.4 percent floor. A bound expressed against quantities that are counted survived a session whose absolute speed moved 13 percent.
+
+*5. The residual-growth prediction was directionally right and quantitatively loose.* Predicted **1.014** total across c = 32 to 128, i.e. 1.007 per doubling, from the surviving attention term `36,864 x c` being 1.4 percent of the step. Measured **1.0737** total, **1.0362** per doubling — about five times the predicted residual, though still an order of magnitude below the uncached 2.0351 per doubling. The prediction's claim that the residual would be *"not distinguishable from flat on this machine"* is **borne out, though not for the reason it gave**: at 7.4 percent total the growth is nominally above the 4.4 percent floor and so would be marginally distinguishable, but both endpoints are INVALID at 14 to 19 percent dispersion, and a 14 percent dispersion cannot support a 7 percent claim. The honest reading is that the curve is flat to within what this session can resolve, and that resolving the residual exactly needs a quieter machine.
+
+*6. Bit-exactness was predicted as a structural consequence and is confirmed exactly.* The prediction claimed a cached decode step would reproduce the prefill logits at the same position **bit for bit**, on the grounds that every GEMM row is computed by the same `ijk` inner loop over the same elements in the same order. Measured: **0 differing elements of 12,061,680**, maximum absolute difference **0**, across all four D3 rows; and the cached step against the no-cache step likewise 0 differing. The prefill divergence against the oracle is **unchanged at 7.019043e-04**, exactly as predicted, and therefore so is the D2 lower bound — which is why the re-derived value came out at the predicted **2.3e-03**. Predicting exactness in advance is what made these comparisons informative rather than a tolerance pass.
+
+*7. The W3 check in the prediction was right about R and wrong about what that guaranteed.* The prediction stated that a 232 to 235 ms step is more than twenty times the 10 ms floor, so **R = 1 everywhere and the batched path does not fire**. Correct: R = 1 was selected for all fifteen configurations, probes ran 237.3 ms to 36,689.3 ms, and the C-side loop was not built. But the prediction — and W3 itself — treated being above the floor as sufficient for a valid measurement, and **it is not**: three configurations comfortably above the floor failed the dispersion rule anyway, because this machine's absolute interruption is roughly 180 ms against a 250 ms bracket. That is the one place the prediction's framing, rather than its arithmetic, was wrong, and it is recorded above as a gap in W3's framing.
+
+**Where the evidence does not establish a cause.** Two things are unexplained and are left unexplained rather than attributed:
+
+- **The cross-session shift of +12.7 to +17.2 percent** on bit-identical code. The process set is the leading candidate and this session's was measurably heavier, but the environment fingerprint has no process-set field, so nothing gates on it and nothing establishes it. Carried as section 8 **W14**, owned by Stage 5.
+
+- **The cached decode step's cost structure.** The counters that would distinguish an issue-rate limit from a cache-miss limit in the cached decode step were not collected (section 8 W4). No choice is made between those candidate causes here. The prediction's own reasoning — that the step is issue-rate bound because a full weight read would take about 7 ms even at L3 bandwidth against a 235 ms compute time, so memory would bind only below about 2.14 GB/s of sustained DRAM bandwidth — **remains an argument and not a measurement**, because no measured DRAM figure exists on this machine (section 8 W1) and this stage did not produce one, did not estimate one, and quotes no bytes-per-second figure as a bandwidth result.
+
+**The one-sentence verdict.** The cache works and is provably exact; it removed the context-proportional term from decode, turning a step that grew 2.0351x per doubling into one that grew 1.0362x per doubling, for a self-relative in-session improvement of 27.69x to 106.80x; and this session could not certify the resulting latency as VALID, because on a machine it could not quiet, a 250 ms bracket is too short to survive a 180 ms interruption.
+
+#### Deferred-work items this stage touched
+
+| Item | Owned by this stage? | What this stage did |
+|---|---|---|
+| **W3** — the timing construction | **Yes** | **Still OPEN.** Status updated. R = 1 was selected for all fifteen configurations (probe range 237.3 ms to 36,689.3 ms), so the C-side batched bracket was again not needed and was **not built speculatively**. What was built instead is the refusal: the driver accepts `--repeat 1` and records it, **refuses `--repeat N` above 1** with a non-zero exit naming W3, and refuses any unrecognised flag; every record carries `repeat_requested` and `repeat_applied`; the harness **hard-fails the whole run** before dividing any bracket by R unless the driver confirmed `repeat_applied == R`, checked even at R = 1; and a probe selecting R above 1 stops the run before the timed pass. All four are unit-tested against stubs that honour, ignore and omit the flag. **The hand-off is stated inside W3's Status: the C-side loop belongs to the first stage that actually selects R above 1** — Stage 5 if it times decode-shaped (M = 1) GEMMs, which at this machine's naive scalar throughput fall below the 10 ms floor. W3's Owning-stage cell was not edited. **Stage 4 also found a limitation in W3's framing** — see the INVALID section: being above the floor is necessary but not sufficient |
+| **W14** — the cross-session shift | **Raised by this stage** | **NEW, OPEN.** Every percentage recomputed from the two results files rather than copied; two cells differ in the last digit from the figures carried into the stage and the files win. Owned by **Stage 5**. `bench/harness.py` now writes `process_set_gated: false` and a W14 pointer into **every** comparison and refusal record. Stage 4's own evidence makes the item sharper, not weaker: this session is +12.7 to +17.2 percent slower than Stage 3 on bit-identical code, which is a shift in the **opposite direction and larger** than the one W14 records |
+| **W15** — silent metadata truncation | **Raised by this stage** | **NEW, OPEN.** The driver's results-metadata arrays drop entries past sixteen **without a warning**, and Stage 4's five new fields took the decode records to seventeen, losing `diagnostic_drift_n_second_half`. Verified that no measurement, statistic, verdict or raw sample array is affected and that the stored diagnostic values are correct. Owned by **Stage 5**; the fix is to raise the caps and, more importantly, to make the accessors fail loudly |
+| **W1** — CPU DRAM bandwidth | No | Unchanged. The cached decode step is the project's first weight-streaming workload, and this stage **did not measure, estimate or fill** CPU DRAM bandwidth, and **quotes no bytes-per-second figure as a bandwidth result** |
+| **W4** — CPU counters | No | Unchanged. `xperf` is **available and deliberately unused**, following the Stage 2 and Stage 3 precedent. Stated consequence: **the decode gap is unestablished at the counter level** |
+| **W5** — the noise floor | No | **Status NOT changed.** This stage's evidence does bear on its basis and the entry says how: W5's "heavier load stays conservative under lighter load" argument bounds claims **within** a session and does **not** bound a cross-session comparison whose conditions moved — and here they moved toward **heavier**, which is the direction that makes this session slower and W5's reassurance inapplicable to the Stage 3 comparison. The 4.4 percent floor is **USED, never re-derived**; this stage did not re-run the Stage 0 suite and cannot re-derive it |
+| **W6** — the Balanced-power-plan re-test | No | **Not run by this stage**, by design: Stage 4 measured a CPU workload against a frozen power-plan fingerprint and changing the plan mid-stage would have voided its own comparison. One dated sentence appended to W6's Status handing it to Stage 5. The power plan was not touched and the fingerprint stayed 25 of 25 clean |
+| **W7, W8** — the theoretical bandwidth ceiling and the SIMD ceiling | No | Neither the 23.464 GB/s single-channel figure nor the 48.411 GFLOP/s AVX2 peak appears as a denominator anywhere in this stage |
+| **W13** — the attention FLOP basis | No | Unchanged. The basis is **named next to every attention FLOP figure**: the cached step's causal row is `36,864 x c` per step, the no-cache path stays on Stage 2's full-square `36,864 x c^2` |
+
+#### Decisions taken without the operator
+
+The operator was remote for the whole timed phase and could not act on the machine. Four decisions were taken inside the stage's own authority and are recorded here rather than left implicit:
+
+1. **The timed set was measured in eight chunks instead of one invocation**, after the host killed single-invocation attempts twice. Every pair stayed adjacent in time; the order within each workload class is unchanged; each chunk re-verified the fingerprint and the lock. A merge step was added to `bench/harness.py` which recomputes no statistic and refuses to combine parts from different builds or overlapping configuration sets.
+2. **The run was moved to a detached process** once it was established that the low-memory condition was pre-existing and would kill any managed background task within minutes. This changed nothing about the measurement; it changed only what could terminate it.
+3. **`prefill L = 128` was measured last** rather than before the decode chunks, so that the stage's own claim was banked ahead of the one configuration with no baseline of either kind. It is a singleton with no control, so its position affects no pairing.
+4. **`bench/stage2_forward_bench.c` was NOT changed to fix W15 mid-run.** Changing it would have made the committed driver disagree with the binary that had already measured six chunks, and re-measuring the set to recover a dropped diagnostic counter would have cost about two hours for no measurement benefit. The defect is recorded as W15 with the evidence that nothing was corrupted.
+
+#### What this stage established, in one place
+
+- **A KV cache that is provably exact, not merely close.** The cached decode path reproduces the prefill logits **bit for bit** at every position of all four D3 rows — 0 differing elements of 12,061,680 — and the cached step matches the no-cache step bit for bit at every tested context. Exactness was **predicted in advance** as a structural consequence of the shared `ijk` reduction order, which is what makes the result a confirmation rather than a tolerance pass.
+- **Decode's context-proportional term is gone.** The no-cache path grows **2.0351x per doubling** of context; the cached path grows **1.0362x per doubling**. In-session the cached step is **27.69x / 54.66x / 106.80x** faster at c = 32 / 64 / 128 — self-relative, against this project's own baseline, computed from an INVALID cached median against a VALID control.
+- **Prefill is unchanged by the cache**, measured against an **in-session** control rather than a cross-session one: **−1.505, −0.692, −0.653 percent** at L = 16, 32, 64, every one inside the 4.4 percent floor, so **no measurable change**.
+- **The cached step is a prefill token, not a decode step, in its cost structure.** It achieves 0.1129 to 0.1195 of the measured scalar ceiling against prefill's 0.1118 to 0.1174 and the uncached decode path's 0.0941 to 0.0965.
+- **D2 re-derived under a corrected rule** to **2.3e-03**, at 3.28x above the set-wide divergence and 3.40x below the set-wide minimum margin, replacing a value that failed its own condition at 1.30x.
+- **The first VALID prefill observation at L = 128** this project has: 33668.358 ms at 1.840 percent, where Stage 3's attempt was INVALID at 5.723 percent. It has no baseline of either kind and is labelled as such.
+- **Three honest limits.** The cached decode latency is **INVALID at every context** and is not certified; the cross-session comparison shows **+12.7 to +17.2 percent** on bit-identical code and is **unexplained**; and with no CPU counters collected the step's cost structure is **unestablished at the counter level**.
+
+#### What this taught
+
+The stage's method lesson is about predicting a change to the *work* rather than to the *machine*. Recomputing the step's FLOPs under the new algorithm and dividing by the efficiency fraction the unchanged kernels already achieve produced f = 0.125 against a measured 0.1129 to 0.1195 — close, and close for the stated reason, because the fraction was taken from the workload whose operation mix matches rather than from the workload being replaced. The absolute latencies were wrong by 5 to 18 percent, and the prediction had already named why: a condition uncertainty of about 10 percent between sessions, which arrived as 13 to 17 percent.
+
+The sharper lesson is that **a prediction's framing can fail where its arithmetic succeeds.** Every number in the W3 check was right — the step is above the floor, R = 1 is correct, the batched loop was not needed — and the conclusion drawn from them, that the measurement would therefore be valid, was wrong. Being above a per-sample floor bounds the *relative* cost of an interruption only if the interruption's absolute size is known, and on this machine it is roughly 180 ms, which a 250 ms bracket cannot absorb. A floor expressed in milliseconds is not a validity guarantee; it is a guarantee only against interruptions smaller than the floor was chosen for.
+
+And the design lesson, which cost nothing and saved the stage: **keep the superseded path selectable and measure it interleaved.** The cross-session shift this session carried was 13 to 17 percent, three to four times the noise floor the prefill falsification test had to resolve. Against the Stage 3 baseline alone, prefill with cache writes would have looked 13 percent slower and the test would have failed on a condition change rather than on a cache. The in-session control answered the question in the only way that could not be confounded, and it existed because a decision was taken not to delete the old path when the new one worked.
 
 ## Stage 5 — CPU GEMM: cache blocking
 **Status:** not started

@@ -375,5 +375,169 @@ class TestPromptSetIdentity(unittest.TestCase):
         self.assertEqual(cx.prompt_set_identity(path)["status"], "PLACEHOLDER")
 
 
+# ===================== Stage 4: the corrected D2 rule and bit-for-bit =========
+
+class TestCorrectedD2Rule(unittest.TestCase):
+    """DECISION A. The rule is exercised on the figures the Stage 4 prompt
+    records for Stage 3's inputs, so the implementation and the stated
+    arithmetic have to agree. Stage 4's own value comes from Stage 4's own
+    measurement, not from these numbers."""
+
+    LOWER = 2.105713e-03     # 3 x 7.019043e-04
+    UPPER = 2.604167e-03     # 7.812500e-03 / 3
+    MARGIN = 7.812500e-03
+    DIVERGENCE = 7.019043e-04
+
+    def test_the_bounds_are_three_times_divergence_and_margin_over_three(self):
+        r = cx.d2_corrected_rule(self.MARGIN, self.DIVERGENCE)
+        self.assertAlmostEqual(r["lower_bound"], self.LOWER, places=9)
+        self.assertAlmostEqual(r["upper_bound"], self.UPPER, places=9)
+        self.assertAlmostEqual(r["window_ratio_margin_over_divergence"], 11.130, places=3)
+        self.assertTrue(r["window_open"])
+        self.assertTrue(r["usable"])
+
+    def test_the_rounding_rule_returns_2_point_3e_minus_3(self):
+        r = cx.d2_corrected_rule(self.MARGIN, self.DIVERGENCE)
+        self.assertAlmostEqual(r["geometric_mean"], 2.3417e-03, places=7)
+        # No one-significant-figure value lies inside [2.105713e-3, 2.604167e-3].
+        self.assertEqual(r["significant_figures"], 2)
+        self.assertEqual([f"{v:.1e}" for v in r["candidates"]],
+                         ["2.2e-03", "2.3e-03", "2.4e-03", "2.5e-03", "2.6e-03"])
+        self.assertEqual(f"{r['value']:.1e}", "2.3e-03")
+        # 2.3e-3 is nearer the geometric mean in LOG distance than 2.4e-3.
+        d = r["candidate_log_distances"]
+        self.assertLess(d[f"{2.3e-03:.6e}"], d[f"{2.4e-03:.6e}"])
+        self.assertAlmostEqual(r["achieved_factor_above_divergence"], 3.277, places=3)
+        self.assertAlmostEqual(r["achieved_factor_below_margin"], 3.397, places=3)
+
+    def test_the_safety_bound_decides_the_rounding_and_never_the_reverse(self):
+        """Where a one-significant-figure value DOES lie inside the window, the
+        rule takes it: the precision is chosen by the window, not by taste."""
+        # Window [1.5e-3, 5.4e-3] contains 2e-3, 3e-3, 4e-3 and 5e-3.
+        r = cx.d2_corrected_rule(1.62e-02, 5.0e-04)
+        self.assertEqual(r["significant_figures"], 1)
+        self.assertEqual(f"{r['value']:.0e}", "3e-03")
+        self.assertTrue(r["usable"])
+
+    def test_a_closed_window_selects_no_value_and_is_reported_as_closed(self):
+        # Divergence so large that 3x it exceeds margin/3.
+        r = cx.d2_corrected_rule(7.8125e-03, 5.0e-03)
+        self.assertFalse(r["window_open"])
+        self.assertFalse(r["usable"])
+        self.assertIsNone(r["value"])
+        self.assertEqual(r["candidates"], [])
+        self.assertIn("CLOSED", r["finding"])
+
+    def test_the_window_check_and_the_nine_times_check_are_the_same_condition(self):
+        """Worth pinning, because it is not obvious from the rule's wording: the
+        window is open exactly when margin / divergence exceeds 9. lower < upper
+        is 3d < m/3, which is m/d > 9. So the two stated conditions coincide at
+        the default minimum, and a ratio below 9 is reported as a CLOSED window
+        rather than as a separate kind of failure."""
+        r = cx.d2_corrected_rule(6.0e-03, 1.0e-03)        # ratio 6, below 9
+        self.assertAlmostEqual(r["window_ratio_margin_over_divergence"], 6.0, places=9)
+        self.assertFalse(r["window_open"])
+        self.assertFalse(r["window_wide_enough"])
+        self.assertFalse(r["usable"])
+        self.assertIsNone(r["value"])
+        self.assertIn("CLOSED", r["finding"])
+
+        r9 = cx.d2_corrected_rule(9.0e-03, 1.0e-03)       # ratio exactly 9
+        self.assertAlmostEqual(r9["lower_bound"], r9["upper_bound"], places=12)
+        self.assertFalse(r9["window_open"])
+        self.assertFalse(r9["usable"])
+        self.assertIsNone(r9["value"])
+
+    def test_a_window_narrower_than_the_required_minimum_is_reported(self):
+        """The two checks separate when the minimum is raised above 9: Stage 3's
+        inputs give 11.13x, which passes at 9x and fails at 15x. The branch is
+        exercised rather than left unreachable."""
+        r = cx.d2_corrected_rule(self.MARGIN, self.DIVERGENCE, window_minimum=15.0)
+        self.assertAlmostEqual(r["window_ratio_margin_over_divergence"], 11.130, places=3)
+        self.assertTrue(r["window_open"])
+        self.assertFalse(r["window_wide_enough"])
+        self.assertFalse(r["usable"])
+        self.assertIsNone(r["value"])
+        self.assertIn("narrower", r["finding"])
+        self.assertIn("15", r["finding"])
+
+
+class TestToleranceParserAcceptsTwoSignificantFigures(unittest.TestCase):
+    """The amended value has two significant figures where Stage 3's had one, and
+    a document carrying TWO machine-readable lines is an error rather than a
+    choice the parser makes silently."""
+
+    def _write(self, body):
+        import tempfile
+        f = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+        f.write(body)
+        f.close()
+        return f.name
+
+    def test_two_significant_figures_parse(self):
+        path = self._write(f"## 5\n\n`{cx.TOLERANCE_TOKEN} = 2.3e-3`\n")
+        try:
+            self.assertAlmostEqual(cx.read_tolerance(path), 2.3e-03, places=12)
+        finally:
+            os.unlink(path)
+
+    def test_one_significant_figure_still_parses(self):
+        path = self._write(f"## 5\n\n`{cx.TOLERANCE_TOKEN} = 6e-3`\n")
+        try:
+            self.assertAlmostEqual(cx.read_tolerance(path), 6.0e-03, places=12)
+        finally:
+            os.unlink(path)
+
+    def test_a_document_with_two_such_lines_is_refused(self):
+        path = self._write(f"## 5\n\n`{cx.TOLERANCE_TOKEN} = 6e-3`\n\n"
+                           f"`{cx.TOLERANCE_TOKEN} = 2.3e-3`\n")
+        try:
+            with self.assertRaises(ValueError) as cm:
+                cx.read_tolerance(path)
+            self.assertIn("EXACTLY ONE", str(cm.exception))
+        finally:
+            os.unlink(path)
+
+
+class TestBitForBitComparator(unittest.TestCase):
+    def test_identical_arrays_report_zero_differing_elements(self):
+        a = np.arange(24, dtype=np.float32).reshape(4, 6) * 0.5 - 3.0
+        r = cx.bitwise_comparison(a, a.copy(), label="identical")
+        self.assertTrue(r["bit_for_bit"])
+        self.assertEqual(r["differing_elements"], 0)
+        self.assertEqual(r["max_abs_difference"], 0.0)
+        self.assertEqual(r["elements"], 24)
+        self.assertEqual(r["first_differing_indices"], [])
+
+    def test_three_planted_differences_are_counted_exactly(self):
+        a = np.arange(24, dtype=np.float32).reshape(4, 6)
+        b = a.copy()
+        b[0, 0] = np.float32(0.25)        # differs by 0.25
+        b[1, 3] = np.float32(100.0)       # differs by 91.0
+        b[3, 5] = np.float32(-1.0)        # differs by 24.0
+        r = cx.bitwise_comparison(a, b, label="three planted")
+        self.assertFalse(r["bit_for_bit"])
+        self.assertEqual(r["differing_elements"], 3)
+        self.assertAlmostEqual(r["max_abs_difference"], 91.0, places=6)
+        self.assertEqual(r["first_differing_indices"], [[0, 0], [1, 3], [3, 5]])
+
+    def test_a_difference_in_the_last_bit_is_still_a_difference(self):
+        """The point of an exact comparison: a one-ulp difference is reported,
+        where a tolerance would absorb it."""
+        a = np.array([1.0], dtype=np.float32)
+        b = np.nextafter(a, np.float32(2.0)).astype(np.float32)
+        r = cx.bitwise_comparison(a, b)
+        self.assertFalse(r["bit_for_bit"])
+        self.assertEqual(r["differing_elements"], 1)
+        self.assertGreater(r["max_abs_difference"], 0.0)
+
+    def test_mismatched_shapes_are_reported_rather_than_broadcast(self):
+        r = cx.bitwise_comparison(np.zeros((2, 3), dtype=np.float32),
+                                  np.zeros((3, 2), dtype=np.float32))
+        self.assertFalse(r["comparable"])
+        self.assertFalse(r["bit_for_bit"])
+        self.assertIn("shapes differ", r["reason"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
