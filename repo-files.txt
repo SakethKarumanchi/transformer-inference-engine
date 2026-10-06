@@ -86,6 +86,16 @@ bench/results/stage2/stage2_forward_cpu_frequency_trace.json
 bench/results/stage3/stage3_correctness.json
 bench/results/stage3/stage3_cublas_d3.json
 bench/results/stage3/stage3_harness.json
+bench/results/stage4/parts/stage4_harness_d128.json
+bench/results/stage4/parts/stage4_harness_d32.json
+bench/results/stage4/parts/stage4_harness_d64.json
+bench/results/stage4/parts/stage4_harness_gemm.json
+bench/results/stage4/parts/stage4_harness_p128.json
+bench/results/stage4/parts/stage4_harness_p16.json
+bench/results/stage4/parts/stage4_harness_p32.json
+bench/results/stage4/parts/stage4_harness_p64.json
+bench/results/stage4/stage4_correctness.json
+bench/results/stage4/stage4_harness.json
 bench/stage2_forward_bench.c
 dashboard/.gitkeep
 model/results/.gitkeep
@@ -101,6 +111,8 @@ src/gemm/.gitkeep
 src/gemm/gemm.h
 src/gemm/gemm_naive.c
 src/gpt2_tensor_inventory.json
+src/kv_cache.c
+src/kv_cache.h
 src/main.c
 src/model.c
 src/model.h
@@ -124,6 +136,7 @@ tests/test_gpu_fp32_peak.cu
 tests/test_harness.py
 tests/test_host_device_transfer.cu
 tests/test_kernel_launch_overhead.cu
+tests/test_kv_cache.c
 tests/test_machine_state.py
 tests/test_model.c
 tests/test_occupancy_sweep.cu

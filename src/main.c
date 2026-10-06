@@ -17,6 +17,23 @@
  *                        vocab_size, then positions*vocab_size float32 in row
  *                        order. Text would round the very quantity being
  *                        compared.
+ *
+ * STAGE 4 AMENDMENT, 2026-10-05. Three flags added; every existing flag keeps
+ * its behaviour and a BARE INVOCATION IS UNCHANGED -- it runs the no-cache
+ * path, so a Stage 2 or Stage 3 command line reproduces exactly what it did.
+ *
+ *   --kv-cache on|off    selects the engine path. DEFAULT off, which is what a
+ *                        bare invocation did before this stage existed.
+ *   --via-decode         with --dump-logits, assembles the positions x vocab
+ *                        matrix from the CACHED DECODE PATH ALONE: prefill over
+ *                        the first token, then one cached decode step per
+ *                        remaining token. Same TIE2LOGI format, so the same
+ *                        comparator reads it. Implies --kv-cache on, because
+ *                        there is no such thing as a cached step without the
+ *                        cache, and says so rather than silently disagreeing
+ *                        with an explicit --kv-cache off.
+ *   --footprint          prints the cache's allocated bytes and the shapes they
+ *                        were computed from, then continues.
  */
 #include "model.h"
 #include "tokenizer.h"
@@ -43,7 +60,12 @@ static void usage(const char *argv0)
         "  --prompt-file FILE     read the prompt from a file instead\n"
         "  --truncate N           keep only the first N prompt tokens\n"
         "  --generate N           greedily generate N tokens (default 0)\n"
+        "  --greedy N             synonym for --generate\n"
         "  --dump-logits FILE     write raw prefill logits for every position\n"
+        "  --kv-cache on|off      engine path (default off: the no-cache path)\n"
+        "  --via-decode           with --dump-logits, assemble the matrix from the\n"
+        "                         cached decode path alone; implies --kv-cache on\n"
+        "  --footprint            print the KV cache's allocated bytes\n"
         "  --cproj as-stored|transposed   reading of h.*.attn.c_proj.weight\n"
         "  --weights/--config/--inventory/--tokenizer PATH\n"
         "  --records              print the per-tensor orientation reconciliation\n",
@@ -77,6 +99,9 @@ int main(int argc, char **argv)
     const char *dump_path = NULL;
     int generate = 0, truncate_to = 0, show_records = 0;
     model_cproj_reading reading = MODEL_CPROJ_AS_STORED;
+    /* Stage 4: default OFF, so a bare invocation is the pre-Stage-4 invocation. */
+    model_decode_path path = MODEL_PATH_NOCACHE;
+    int via_decode = 0, show_footprint = 0, kv_flag_seen = 0;
 
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
@@ -91,8 +116,19 @@ int main(int argc, char **argv)
         ARG("--dump-logits", dump_path)
 #undef ARG
         if (!strcmp(a, "--generate") && has_next) { generate = atoi(argv[++i]); continue; }
+        if (!strcmp(a, "--greedy") && has_next)   { generate = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--truncate") && has_next) { truncate_to = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--records")) { show_records = 1; continue; }
+        if (!strcmp(a, "--via-decode")) { via_decode = 1; continue; }
+        if (!strcmp(a, "--footprint")) { show_footprint = 1; continue; }
+        if (!strcmp(a, "--kv-cache") && has_next) {
+            const char *v = argv[++i];
+            kv_flag_seen = 1;
+            if (!strcmp(v, "on")) path = MODEL_PATH_CACHE;
+            else if (!strcmp(v, "off")) path = MODEL_PATH_NOCACHE;
+            else { usage(argv[0]); return 2; }
+            continue;
+        }
         if (!strcmp(a, "--cproj") && has_next) {
             const char *v = argv[++i];
             if (!strcmp(v, "transposed")) reading = MODEL_CPROJ_TRANSPOSED;
@@ -102,6 +138,18 @@ int main(int argc, char **argv)
         }
         usage(argv[0]);
         return 2;
+    }
+
+    /* --via-decode is a request for the cached path. Refusing the contradiction
+     * rather than resolving it quietly: a run that asked for both and got one
+     * would be a measurement whose path is not what its command line says. */
+    if (via_decode) {
+        if (kv_flag_seen && path == MODEL_PATH_NOCACHE) {
+            fprintf(stderr, "--via-decode assembles the matrix from the CACHED decode path "
+                            "and contradicts --kv-cache off. Pass one or the other.\n");
+            return 2;
+        }
+        path = MODEL_PATH_CACHE;
     }
 
     char *prompt_buf = NULL;
@@ -140,6 +188,9 @@ int main(int argc, char **argv)
            model_gemm_of(m)->name,
            model_cproj_reading_of(m) == MODEL_CPROJ_TRANSPOSED ? "transposed" : "as-stored",
            model_head_weight(m) == model_token_embedding(m) ? "same" : "DIFFERENT -- NOT TIED");
+    printf("kv cache: %s%s\n",
+           path == MODEL_PATH_CACHE ? "ON" : "off (the no-cache path)",
+           via_decode ? "   logit matrix assembled from the cached decode path alone" : "");
 
     if (show_records) {
         for (size_t i = 0; i < model_tensor_record_count(m); ++i) {
@@ -162,13 +213,51 @@ int main(int argc, char **argv)
     float *logits = (float *)malloc((size_t)c->vocab_size * n_ids * sizeof(float));
     if (!logits) { fprintf(stderr, "out of memory for logits\n"); return 1; }
 
+    /* ---- the path, and the cache when it is selected. Both outside every
+     *      bracket; this program times nothing. ---- */
+    model_set_decode_path(m, path);
+    const size_t want_ctx = n_ids + (size_t)generate;
+    model_reserve(m, want_ctx);
+    if (path == MODEL_PATH_CACHE) {
+        rc = model_kv_reserve(m, want_ctx);
+        if (rc != MODEL_OK) { fprintf(stderr, "kv cache: %s\n", model_strerror(rc)); return 1; }
+    }
+    if (show_footprint) {
+        printf("kv cache footprint: %zu bytes allocated "
+               "(= n_layer %d x 2 x capacity %d x n_embd %d x 4 B)\n",
+               model_kv_footprint_bytes(m), c->n_layer, model_kv_capacity(m), c->n_embd);
+        if (path != MODEL_PATH_CACHE)
+            printf("                    the no-cache path is selected, so NO cache is "
+                   "allocated and the resident footprint is exactly 0\n");
+    }
+
     /* ---- prefill ---- */
-    model_reserve(m, n_ids + (size_t)generate);
     clock_t t0 = clock();
-    rc = model_prefill(m, ids, n_ids, logits, (size_t)c->vocab_size * n_ids);
-    if (rc != MODEL_OK) { fprintf(stderr, "prefill: %s\n", model_strerror(rc)); return 1; }
-    printf("prefill done (progress only, not a measurement: %.1f s wall)\n",
-           (double)(clock() - t0) / CLOCKS_PER_SEC);
+    if (via_decode) {
+        /* The whole matrix from the CACHED PATH ALONE: prefill over the first
+         * token, then one cached decode step per remaining token. Each step
+         * writes the row for its own position, so the assembled matrix is
+         * positions x vocab in the same layout prefill would have written. */
+        rc = model_prefill(m, ids, 1, logits, (size_t)c->vocab_size);
+        if (rc != MODEL_OK) { fprintf(stderr, "prefill(1): %s\n", model_strerror(rc)); return 1; }
+        for (size_t t = 1; t < n_ids && rc == MODEL_OK; ++t) {
+            rc = model_decode_step_cached(m, ids, t + 1,
+                                          logits + t * (size_t)c->vocab_size,
+                                          (size_t)c->vocab_size);
+            if (rc != MODEL_OK)
+                fprintf(stderr, "cached decode step at context %zu: %s\n",
+                        t + 1, model_strerror(rc));
+        }
+        if (rc != MODEL_OK) return 1;
+        printf("logit matrix assembled from %zu cached decode steps after a 1-token prefill "
+               "(progress only, not a measurement: %.1f s wall)\n",
+               n_ids - 1, (double)(clock() - t0) / CLOCKS_PER_SEC);
+    } else {
+        rc = model_prefill(m, ids, n_ids, logits, (size_t)c->vocab_size * n_ids);
+        if (rc != MODEL_OK) { fprintf(stderr, "prefill: %s\n", model_strerror(rc)); return 1; }
+        printf("prefill done (progress only, not a measurement: %.1f s wall)\n",
+               (double)(clock() - t0) / CLOCKS_PER_SEC);
+    }
 
     if (dump_path) {
         FILE *d = fopen(dump_path, "wb");

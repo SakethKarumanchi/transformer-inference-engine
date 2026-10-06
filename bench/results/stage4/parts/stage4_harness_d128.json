@@ -1,0 +1,591 @@
+{
+ "stage": "stage-4",
+ "kind": "harness",
+ "generated_by": "bench/harness.py",
+ "git_commit": "b8543b464eaf972355165f89c885c23b8bd4a524",
+ "run_timestamp_utc": "2026-10-05T23:57:02Z",
+ "c_layer_run_timestamp_utc": "2026-10-05T23:57:02Z",
+ "build_timestamp": "2026-10-05T16:56:04Z",
+ "device": "NVIDIA GeForce GTX 1650 Ti sm_75",
+ "cpu_timer": "QueryPerformanceCounter",
+ "gpu_timer": "cudaEvent + cudaDeviceSynchronize",
+ "cxx_compiler": "MSVC 19.44.35229.0 (C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/HostX64/x64/cl.exe)",
+ "cxx_flags": "/DWIN32 /D_WINDOWS /EHsc /W3 /arch:AVX2 /fp:precise /MD /O2 /Ob2 /DNDEBUG",
+ "cuda_compiler": "nvcc 13.1.80 (C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1/bin/nvcc.exe)",
+ "cuda_flags": "-D_WINDOWS -Xcompiler=\" /EHsc\" -O3 --generate-line-info -Xptxas=-O3 -Xptxas=-v -Xcompiler=/arch:AVX2 -Xcompiler=/fp:precise -arch=sm_75",
+ "provenance_source": "carried through from the C timing layer's own results file, which compiles build/generated/build_info.h and git_info.h in. The Python layer does not re-derive these by a different route",
+ "protocol": {
+  "min_warmup": 5,
+  "min_samples": 20,
+  "max_stddev_pct_of_median": 5.0
+ },
+ "protocol_conditions": {
+  "warmup_iterations": 25,
+  "samples": 30,
+  "max_stddev_pct_of_median": 5.0,
+  "limit_is_a_parameter": false,
+  "retry_path_exists": false,
+  "note": "the 5%-of-median limit is applied by the C layer and is not adjustable from this harness. There is no retry path, so no configuration can be re-run into validity by this code"
+ },
+ "prompt_set": {
+  "status": "FIXED",
+  "decision": "D3",
+  "source": "tests/fixtures/benchmark_prompts.tsv",
+  "rows": [
+   {
+    "id": "d3_16",
+    "target_tokens": 16,
+    "verified_tokens": 16
+   },
+   {
+    "id": "d3_32",
+    "target_tokens": 32,
+    "verified_tokens": 32
+   },
+   {
+    "id": "d3_64",
+    "target_tokens": 64,
+    "verified_tokens": 64
+   },
+   {
+    "id": "d3_128",
+    "target_tokens": 128,
+    "verified_tokens": 128
+   }
+  ],
+  "is_d3_fixed_set": true,
+  "explicitly_overridden": false
+ },
+ "preflight": {
+  "pass": true,
+  "failed_checks": [],
+  "checks": {
+   "environment_fingerprint": {
+    "pass": true,
+    "fields_compared": 25,
+    "fields_expected": 25,
+    "differences": [],
+    "fields_excluded_from_comparison": [
+     "build_flags.BENCH_BUILD_TIMESTAMP"
+    ],
+    "provenance_reported_not_compared": [
+     {
+      "field": "build_flags.BENCH_BUILD_TIMESTAMP",
+      "stored": "2026-09-18T06:56:02Z",
+      "current": "2026-10-05T16:56:04Z",
+      "compared": false,
+      "note": "INFORMATIONAL, NOT COMPARED. Regenerated at CMake configure time, so it moves on every clean build and carries no information about the machine. Reported here instead of being compared or silently dropped. W12"
+     }
+    ],
+    "reasons": []
+   },
+   "graphics_clock_lock": {
+    "pass": true,
+    "expected_mhz": 1365,
+    "detail": {
+     "locked": true,
+     "expected_mhz": 1365,
+     "observed_mhz": [
+      1365,
+      1365,
+      1365,
+      1365,
+      1365,
+      1365,
+      1365,
+      1365,
+      1365,
+      1365
+     ],
+     "off_target_samples": [],
+     "reason": null
+    }
+   }
+  },
+  "rule": "BENCHMARK_PROTOCOL.md section 4: the fingerprint is re-verified before the first timed run of every stage, and the graphics clock lock is not optional on this machine (section 4.2)"
+ },
+ "w3_construction": {
+  "per_sample_floor_ms": 10.0,
+  "probes": [
+   {
+    "workload": "decode",
+    "tokens": 128,
+    "prompt_row_id": "d3_128",
+    "probe_ms": 254.346,
+    "path": "cache",
+    "tag": "probe, NOT A MEASUREMENT"
+   },
+   {
+    "workload": "decode",
+    "tokens": 128,
+    "prompt_row_id": "d3_128",
+    "probe_ms": 27762.933,
+    "path": "nocache",
+    "tag": "probe, NOT A MEASUREMENT"
+   }
+  ],
+  "selected": {
+   "decode|c=128|cache": {
+    "construction": "single_iteration",
+    "probe_ms": 254.346,
+    "per_sample_floor_ms": 10.0,
+    "repeat_factor_R": 1,
+    "effective_bracket_ms": 254.346,
+    "amortised": false,
+    "note": "the probe is at or above the per-sample floor, so one iteration per timed bracket and the per-iteration distribution stays observable"
+   },
+   "decode|c=128": {
+    "construction": "single_iteration",
+    "probe_ms": 27762.933,
+    "per_sample_floor_ms": 10.0,
+    "repeat_factor_R": 1,
+    "effective_bracket_ms": 27762.933,
+    "amortised": false,
+    "note": "the probe is at or above the per-sample floor, so one iteration per timed bracket and the per-iteration distribution stays observable"
+   }
+  },
+  "arithmetic": {
+   "sd_pct_formula": "50 * sqrt(k*(n-k)/(n*(n-1)))",
+   "sd_pct_at_n30_k1": 9.128709291752768,
+   "w3_original_form": "0.5/sqrt(29) = 9.29%",
+   "rate_model": "relative sd = delta*sqrt(lambda/T): depends on the PER-SAMPLE DURATION T and NOT on the sample count n. More samples do not reduce it; batching divides it by sqrt(R)"
+  },
+  "batched_path_exercised_by_a_timed_run": false,
+  "note": "every Stage 3 configuration is seconds-scale and took the single-iteration path. The batched path is built and unit-tested and is NOT exercised by a timed run in this stage",
+  "repeat_confirmation": {
+   "checked": [
+    {
+     "configuration_key": "decode|c=128|cache",
+     "repeat_factor_R": 1,
+     "repeat_applied": 1
+    },
+    {
+     "configuration_key": "decode|c=128",
+     "repeat_factor_R": 1,
+     "repeat_applied": 1
+    }
+   ],
+   "all_confirmed": true,
+   "rule": "every configuration's repeat_applied, as reported by the timing driver, must equal the R this harness selected -- including R = 1. An unconfirmed bracket is never divided",
+   "work_item": "PERSISTENT.md section 8, W3"
+  }
+ },
+ "records": [
+  {
+   "configuration_key": "decode|c=128|cache",
+   "workload": "decode",
+   "configuration": "decode, one step at context c=128 tokens, head at the last position only, KV cache USED (cache path)",
+   "prompt_row_id": "d3_128",
+   "units": "ms",
+   "value": 260.4446500008635,
+   "warmup_iterations": 25,
+   "samples_requested": 30,
+   "raw_samples_ms": [
+    292.8040000006149,
+    260.7592000022123,
+    267.65469999736524,
+    260.13009999951464,
+    303.8979999982985,
+    258.3225999987917,
+    255.6336999987252,
+    274.5953000012378,
+    278.8915999990422,
+    257.31829999858746,
+    254.69770000199787,
+    444.9432000001252,
+    256.0176999977557,
+    257.67869999981485,
+    319.53840000278433,
+    327.7883999980986,
+    253.89699999868753,
+    257.297699998162,
+    298.4867999984999,
+    257.85199999882025,
+    254.62790000165114,
+    277.368099999876,
+    280.5989000007685,
+    255.9865000002901,
+    254.87839999914286,
+    286.9243000022834,
+    268.22399999946356,
+    256.04460000249674,
+    255.31539999792585,
+    292.38050000276417
+   ],
+   "statistics": {
+    "n": 30,
+    "mean_ms": 277.35178999985993,
+    "median_ms": 260.4446500008635,
+    "min_ms": 253.89699999868753,
+    "max_ms": 444.9432000001252,
+    "stddev_ms": 37.70502959691893,
+    "stddev_pct_of_median": 14.477175705776228,
+    "valid": false,
+    "invalid_reason": "stddev is 14.477% of median, above the 5.0% protocol limit"
+   },
+   "valid": false,
+   "verdict": "INVALID",
+   "invalid_reason": "stddev is 14.477% of median, above the 5.0% protocol limit",
+   "validity_rule": "std dev > 5.0% of median => INVALID. Applied by the C layer; never loosened, never retried, never averaged away. This harness has no retry path",
+   "validity_crosscheck_agrees_with_c_layer": true,
+   "construction": {
+    "construction": "single_iteration",
+    "probe_ms": 254.346,
+    "per_sample_floor_ms": 10.0,
+    "repeat_factor_R": 1,
+    "effective_bracket_ms": 254.346,
+    "amortised": false,
+    "note": "the probe is at or above the per-sample floor, so one iteration per timed bracket and the per-iteration distribution stays observable"
+   },
+   "counters": {
+    "context_tokens": 128,
+    "tokens_generated": 1,
+    "repeat_requested": 1,
+    "repeat_applied": 1,
+    "cache_capacity": 128,
+    "cache_bytes": 9437184,
+    "cached_positions": 127,
+    "vocab_size": 50257,
+    "n_layer": 12,
+    "prompt_set_owning_stage": 3,
+    "thread_pinned": 1,
+    "thread_logical_cpu": 2,
+    "diagnostic_first_half_median_ms": 260.7592000022123,
+    "diagnostic_second_half_median_ms": 257.85199999882025,
+    "diagnostic_drift_pct_second_vs_first": -1.1148983442836908,
+    "diagnostic_drift_n_first_half": 15
+   },
+   "annotations": {
+    "decode_path": "cache",
+    "cache_state_construction": "length restored outside bracket",
+    "pre_warmup_bit_identity_check": "PASSED: the cached step's logits are bit-identical to the no-cache step's at the same context; a mismatch aborts the configuration untimed",
+    "workload": "decode",
+    "matmul": "gemm_naive",
+    "kv_cache": "USED: one token through the weights, attention over the cached positions",
+    "causal_mask": "regenerated as a loop bound; the stored mask buffers are not read",
+    "attn_c_proj_reading": "as-stored [input, output]",
+    "prompt_set_status": "FIXED",
+    "prompt_set_open_decision": "D3",
+    "prompt_set_work_item": "W11",
+    "prompt_set_source": "C:\\Users\\saket\\Transformer_Inference_Engine\\tests\\fixtures\\benchmark_prompts.tsv",
+    "prompt_row_id": "d3_128",
+    "thread_placement": "pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)",
+    "timed_bracket_contains": "model_decode_step_cached only; the cache allocation, the pre-fill of the first c-1 positions and the per-iteration length restoration are all outside it",
+    "tag": "measured"
+   },
+   "diagnostics": {
+    "diagnostic_trimmed_fraction_each_tail": 0.1,
+    "diagnostic_trimmed_median_ms": 260.4446500008635,
+    "diagnostic_trimmed_stddev_ms": 15.759235011839015,
+    "diagnostic_trimmed_stddev_pct_of_median": 6.050896039441304,
+    "diagnostic_note": "DIAGNOSTIC ONLY. Labelled, never reported as a result, never used to revise a VALID/INVALID verdict. The reported median and standard deviation are the C layer's, over all samples"
+   }
+  },
+  {
+   "configuration_key": "decode|c=128",
+   "workload": "decode",
+   "configuration": "decode, one step at context c=128 tokens, head at the last position only, KV cache none (no-cache path)",
+   "prompt_row_id": "d3_128",
+   "units": "ms",
+   "value": 27815.349450000213,
+   "warmup_iterations": 25,
+   "samples_requested": 30,
+   "raw_samples_ms": [
+    27741.69299999994,
+    27866.53920000026,
+    28083.898099997896,
+    27926.970199998323,
+    28230.40899999978,
+    27810.306400002446,
+    27964.139800002158,
+    28085.588400001143,
+    27947.46049999958,
+    27870.310100002825,
+    28115.160800000012,
+    27691.75720000203,
+    27572.211999999126,
+    27619.36699999933,
+    27754.3302999984,
+    28081.880500001716,
+    27750.342800001818,
+    27582.36509999915,
+    27768.072999999276,
+    27810.7557000003,
+    27768.076700001984,
+    27633.738399999856,
+    28188.17399999898,
+    27690.830300001835,
+    27677.47650000092,
+    28020.88680000088,
+    27659.400399999868,
+    28015.782799997396,
+    27819.943200000125,
+    28035.41409999889
+   ],
+   "statistics": {
+    "n": 30,
+    "mean_ms": 27859.44274333354,
+    "median_ms": 27815.349450000213,
+    "min_ms": 27572.211999999126,
+    "max_ms": 28230.40899999978,
+    "stddev_ms": 187.94433275698674,
+    "stddev_pct_of_median": 0.6756856788545049,
+    "valid": true,
+    "invalid_reason": null
+   },
+   "valid": true,
+   "verdict": "VALID",
+   "invalid_reason": null,
+   "validity_rule": "std dev > 5.0% of median => INVALID. Applied by the C layer; never loosened, never retried, never averaged away. This harness has no retry path",
+   "validity_crosscheck_agrees_with_c_layer": true,
+   "construction": {
+    "construction": "single_iteration",
+    "probe_ms": 27762.933,
+    "per_sample_floor_ms": 10.0,
+    "repeat_factor_R": 1,
+    "effective_bracket_ms": 27762.933,
+    "amortised": false,
+    "note": "the probe is at or above the per-sample floor, so one iteration per timed bracket and the per-iteration distribution stays observable"
+   },
+   "counters": {
+    "context_tokens": 128,
+    "tokens_generated": 1,
+    "repeat_requested": 1,
+    "repeat_applied": 1,
+    "cache_capacity": 0,
+    "cache_bytes": 0,
+    "cached_positions": 0,
+    "vocab_size": 50257,
+    "n_layer": 12,
+    "prompt_set_owning_stage": 3,
+    "thread_pinned": 1,
+    "thread_logical_cpu": 2,
+    "diagnostic_first_half_median_ms": 27870.310100002825,
+    "diagnostic_second_half_median_ms": 27768.076700001984,
+    "diagnostic_drift_pct_second_vs_first": -0.3668183082068793,
+    "diagnostic_drift_n_first_half": 15
+   },
+   "annotations": {
+    "decode_path": "nocache",
+    "cache_state_construction": "no cache allocated for this configuration",
+    "pre_warmup_bit_identity_check": "not applicable: this configuration IS the no-cache path",
+    "workload": "decode",
+    "matmul": "gemm_naive",
+    "kv_cache": "none -- a decode step re-runs the whole forward pass",
+    "causal_mask": "regenerated as a loop bound; the stored mask buffers are not read",
+    "attn_c_proj_reading": "as-stored [input, output]",
+    "prompt_set_status": "FIXED",
+    "prompt_set_open_decision": "D3",
+    "prompt_set_work_item": "W11",
+    "prompt_set_source": "C:\\Users\\saket\\Transformer_Inference_Engine\\tests\\fixtures\\benchmark_prompts.tsv",
+    "prompt_row_id": "d3_128",
+    "thread_placement": "pinned to logical cpu 2 of 8; priority raised (ABOVE_NORMAL class, THREAD_PRIORITY_HIGHEST)",
+    "timed_bracket_contains": "model_decode_step only",
+    "tag": "measured"
+   },
+   "diagnostics": {
+    "diagnostic_trimmed_fraction_each_tail": 0.1,
+    "diagnostic_trimmed_median_ms": 27815.349450000213,
+    "diagnostic_trimmed_stddev_ms": 146.76761383547733,
+    "diagnostic_trimmed_stddev_pct_of_median": 0.5276497212422266,
+    "diagnostic_note": "DIAGNOSTIC ONLY. Labelled, never reported as a result, never used to revise a VALID/INVALID verdict. The reported median and standard deviation are the C layer's, over all samples"
+   }
+  }
+ ],
+ "summary": {
+  "prefill": [],
+  "decode": [
+   {
+    "configuration_key": "decode|c=128|cache",
+    "prompt_row_id": "d3_128",
+    "median_ms": 260.4446500008635,
+    "min_ms": 253.89699999868753,
+    "max_ms": 444.9432000001252,
+    "stddev_pct_of_median": 14.477175705776228,
+    "n_samples": 30,
+    "construction": "single_iteration",
+    "repeat_factor_R": 1,
+    "verdict": "INVALID"
+   },
+   {
+    "configuration_key": "decode|c=128",
+    "prompt_row_id": "d3_128",
+    "median_ms": 27815.349450000213,
+    "min_ms": 27572.211999999126,
+    "max_ms": 28230.40899999978,
+    "stddev_pct_of_median": 0.6756856788545049,
+    "n_samples": 30,
+    "construction": "single_iteration",
+    "repeat_factor_R": 1,
+    "verdict": "VALID"
+   }
+  ],
+  "other_workloads": [],
+  "separation_note": "prefill and decode are separate workloads and are never combined into one figure, at any level of this file. Prefill is compute-bound; decode is memory-bandwidth-bound"
+ },
+ "invalid_configurations": [
+  "decode|c=128|cache"
+ ],
+ "correctness": {
+  "available": true,
+  "source": "bench/results/stage4/stage4_correctness.json",
+  "verdict": "PASS",
+  "gate_applied": true,
+  "tolerance": 0.0023,
+  "conditions": {
+   "max_abs_diff_within_tolerance": {
+    "pass": true,
+    "worst_max_abs_diff": 0.000701904296875,
+    "worst_configuration": "prefill, L=128 tokens, D3 row d3_128",
+    "rule": "max absolute difference <= tolerance",
+    "offending_configurations": []
+   },
+   "top1_agreement_at_every_position": {
+    "pass": true,
+    "offending_configurations": []
+   },
+   "greedy_sequence_matches_reference": {
+    "pass": true,
+    "note": "checked"
+   }
+  },
+  "prompt_set": {
+   "status": "FIXED",
+   "decision": "D3",
+   "source": "tests/fixtures/benchmark_prompts.tsv",
+   "rows": [
+    {
+     "id": "d3_16",
+     "target_tokens": 16,
+     "verified_tokens": 16
+    },
+    {
+     "id": "d3_32",
+     "target_tokens": 32,
+     "verified_tokens": 32
+    },
+    {
+     "id": "d3_64",
+     "target_tokens": 64,
+     "verified_tokens": 64
+    },
+    {
+     "id": "d3_128",
+     "target_tokens": 128,
+     "verified_tokens": 128
+    }
+   ]
+  },
+  "margin_table": [
+   {
+    "target_tokens": 16,
+    "prompt_row_id": "d3_16",
+    "positions": 16,
+    "max_abs_diff": 0.000396728515625,
+    "margin_min": 0.0591583251953125,
+    "margin_min_position": 13,
+    "margin_median": 0.5710029602050781,
+    "margin_max": 2.3024826049804688,
+    "margin_min_over_max_abs_diff": 149.1153846153846
+   },
+   {
+    "target_tokens": 32,
+    "prompt_row_id": "d3_32",
+    "positions": 32,
+    "max_abs_diff": 0.00042724609375,
+    "margin_min": 0.0078125,
+    "margin_min_position": 11,
+    "margin_median": 0.5857620239257812,
+    "margin_max": 7.0666961669921875,
+    "margin_min_over_max_abs_diff": 18.285714285714285
+   },
+   {
+    "target_tokens": 64,
+    "prompt_row_id": "d3_64",
+    "positions": 64,
+    "max_abs_diff": 0.0004425048828125,
+    "margin_min": 0.04189300537109375,
+    "margin_min_position": 1,
+    "margin_median": 0.8238487243652344,
+    "margin_max": 3.162841796875,
+    "margin_min_over_max_abs_diff": 94.67241379310344
+   },
+   {
+    "target_tokens": 128,
+    "prompt_row_id": "d3_128",
+    "positions": 128,
+    "max_abs_diff": 0.000701904296875,
+    "margin_min": 0.04366302490234375,
+    "margin_min_position": 118,
+    "margin_median": 0.7676620483398438,
+    "margin_max": 8.915008544921875,
+    "margin_min_over_max_abs_diff": 62.20652173913044
+   }
+  ],
+  "note": "a FAIL is recorded as a FAIL and does not stop timings already taken from being recorded as taken"
+ },
+ "regression": {
+  "performed": true,
+  "prior_results_file": "bench/results/stage3/stage3_harness.json",
+  "prior_stage": "stage-3",
+  "noise_floor_pct": 4.4,
+  "noise_floor_source": "BENCHMARK_PROTOCOL.md section 4.1, measured by Stage 0 on 2026-09-17. USED here, not re-derived (W5)",
+  "substantive_fingerprint_differences": [],
+  "process_set_gated": false,
+  "process_set_note": "see PERSISTENT.md \u00a78 W14",
+  "process_set_limitation": "W14: the environment fingerprint does not include the process set, so this comparison does not control it. The same binary measured in the Stage 2 and Stage 3 sessions differed by roughly 9 to 12 percent on unchanged code, about 2.3 times the 4.4 percent noise floor. Any cross-session comparison below carries that shift; a comparison against an in-session control does not",
+  "regression_definition": "a slowdown of the median exceeding the noise floor, on a configuration VALID in BOTH files, at the SAME prompt set and the SAME configuration",
+  "cannot_catch": "any change smaller than the noise floor. A real regression inside 4.4% is indistinguishable from noise here and is reported as no measurable change",
+  "comparisons": [
+   {
+    "configuration_key": "decode|c=128",
+    "comparable": true,
+    "prior_median_ms": 23735.4105000004,
+    "current_median_ms": 27815.349450000213,
+    "change_pct": 17.189249581336483,
+    "noise_floor_pct": 4.4,
+    "outcome": "REGRESSION",
+    "process_set_gated": false,
+    "process_set_note": "see PERSISTENT.md \u00a78 W14"
+   }
+  ],
+  "refusals": [
+   {
+    "configuration_key": "decode|c=128|cache",
+    "comparable": false,
+    "reason": "the configuration does not appear in the prior file",
+    "process_set_gated": false,
+    "process_set_note": "see PERSISTENT.md \u00a78 W14"
+   }
+  ],
+  "regressions": [
+   "decode|c=128"
+  ],
+  "any_regression": true
+ },
+ "counters": {
+  "collected": false,
+  "reason": "BENCHMARK_PROTOCOL.md section 6 requires Nsight Compute counters for GPU stages from Stage 7 onward. This stage writes no kernel; the engine it times runs on the CPU, and the cuBLAS binary it re-runs is Stage 0's, already profiled in its own stage. No profiler run was introduced",
+  "nsight_counters": {
+   "collected": false,
+   "reason": "a CPU stage. BENCHMARK_PROTOCOL.md section 6 requires Nsight counters from Stage 7 onward, and this stage writes no kernel"
+  },
+  "cpu_counters": {
+   "collected": false,
+   "tool_available": "xperf (Windows Performance Toolkit)",
+   "reason": "PERSISTENT.md section 8, W4: xperf is AVAILABLE on this machine and is DELIBERATELY UNUSED, following the Stage 2 and Stage 3 precedent. The consequence is stated rather than hidden: without CPU counters, the cause of the measured gap is not established at the counter level, and an issue-rate limit cannot be distinguished from a cache-miss limit"
+  }
+ },
+ "headline_ratios": {
+  "quoted": false,
+  "reason": "BENCHMARK_PROTOCOL.md section 7 defines the decode headline against measured GPU bandwidth and the prefill headline against cuBLAS at the engine's shapes. This stage's engine runs on the CPU, so the cuBLAS figures recorded here are DENOMINATORS FOR LATER STAGES and not a ratio for this one"
+ },
+ "configuration_order": {
+  "order": [
+   "decode:128:cache",
+   "decode:128:nocache"
+  ],
+  "one_invocation_runs_every_configuration": true,
+  "note": "the driver runs every configuration in ONE invocation, so this list is the order the machine saw. Each cache configuration is immediately followed by its no-cache control, so any drift within the session falls on both members of a pair (PERSISTENT.md section 8, W14)"
+ }
+}

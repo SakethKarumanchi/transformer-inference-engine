@@ -321,8 +321,14 @@ tie_engine(gemm_naive gemm/gemm_naive.c NONE)
 tie_engine(model      model.c           NONE)
 tie_engine(gpt2       main.c            GPT2_MAIN)
 
+# ---- Stage 4: the KV cache ---------------------------------------------------
+# Registered with the SAME tie_engine pattern and no flag change. It is storage
+# only: it does not link the GEMM and the model is what joins the two.
+tie_engine(kv_cache   kv_cache.c        NONE)
+
 target_sources(gpt2_tool PRIVATE
     $<TARGET_OBJECTS:model_obj>
+    $<TARGET_OBJECTS:kv_cache_obj>
     $<TARGET_OBJECTS:gemm_naive_obj>
     $<TARGET_OBJECTS:safetensors_obj>
     $<TARGET_OBJECTS:tokenizer_obj>)
@@ -354,7 +360,8 @@ if(MSVC)
 endif()
 
 tie_src_test(test_gemm_naive test_gemm_naive.c gemm_naive_obj)
-tie_src_test(test_model      test_model.c      model_obj gemm_naive_obj
+tie_src_test(test_kv_cache   test_kv_cache.c   kv_cache_obj)
+tie_src_test(test_model      test_model.c      model_obj kv_cache_obj gemm_naive_obj
                                                safetensors_obj tokenizer_obj)
 if(MSVC)
     target_compile_definitions(test_gemm_naive PRIVATE
@@ -371,6 +378,7 @@ endif()
 add_executable(stage2_forward_bench
     "${CMAKE_SOURCE_DIR}/bench/stage2_forward_bench.c"
     $<TARGET_OBJECTS:model_obj>
+    $<TARGET_OBJECTS:kv_cache_obj>
     $<TARGET_OBJECTS:gemm_naive_obj>
     $<TARGET_OBJECTS:safetensors_obj>
     $<TARGET_OBJECTS:tokenizer_obj>)
@@ -392,6 +400,36 @@ if(Python3_Interpreter_FOUND)
                      "${CMAKE_SOURCE_DIR}/tests/test_reference_impl.py"
                      --engine $<TARGET_FILE:gpt2_tool>)
     set_tests_properties(test_reference_impl PROPERTIES TIMEOUT 300)
+
+    # ---- Stage 4, DECISION E check 6: the 32-token greedy sequence from three
+    # producers -- the engine's cached path, the engine's no-cache path and the
+    # oracle -- all required to be exactly equal.
+    #
+    # TWO ENTRIES OVER ONE FILE, and the reason is the 5-minute cap rather than
+    # taste: the no-cache leg re-runs the whole forward pass at contexts 17
+    # through 48, about 1,040 token-passes, which is minutes of scalar work,
+    # while the cached leg plus the oracle is well under one. Registering all
+    # three producers as one test would sit a few seconds from the cap. The
+    # cache phase records its sequence and the nocache phase compares all three
+    # against that record, so nothing is lost by the split. They are ORDERED:
+    # the nocache phase depends on the cache phase's record.
+    set(TIE_GREEDY32_DIR "${CMAKE_BINARY_DIR}/greedy32")
+    file(MAKE_DIRECTORY "${TIE_GREEDY32_DIR}")
+    add_test(NAME test_greedy32_cache
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tests/test_reference_impl.py"
+                     --engine $<TARGET_FILE:gpt2_tool>
+                     --out-dir "${TIE_GREEDY32_DIR}"
+                     --greedy32 cache)
+    add_test(NAME test_greedy32_nocache
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tests/test_reference_impl.py"
+                     --engine $<TARGET_FILE:gpt2_tool>
+                     --out-dir "${TIE_GREEDY32_DIR}"
+                     --greedy32 nocache)
+    set_tests_properties(test_greedy32_cache   PROPERTIES TIMEOUT 300)
+    set_tests_properties(test_greedy32_nocache PROPERTIES TIMEOUT 300
+                         DEPENDS test_greedy32_cache)
 else()
     message(WARNING "Python 3 interpreter not found; the Stage 2 reference test is NOT "
                     "registered and the suite is incomplete.")

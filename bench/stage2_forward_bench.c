@@ -59,6 +59,35 @@
  * NOT CHANGED: bench_run, the timed bodies, the bracket contents, the warmup
  * and sample handling, the statistics, the 5%-of-median validity rule, the
  * drift diagnostic, and every output field that already existed.
+ *
+ * STAGE 4 AMENDMENT -- THE TWO ENGINE PATHS AND THE W3 REFUSAL, 2026-10-05.
+ * Extended in place again, for the same reason: the timing code is here and in
+ * bench_common, where it is unit-tested, and a second driver would be a second
+ * place for the bracket to be wrong. What changed, and nothing else:
+ *
+ *   - --prefill-path and --decode-path select the engine path, each DEFAULTING
+ *     to nocache so a bare invocation reproduces Stage 3 exactly;
+ *   - --configs takes an explicit ORDERED configuration list, which is how the
+ *     paired interleaved order (cache, then its no-cache control, at each
+ *     length) is expressed in ONE invocation. One invocation runs every
+ *     configuration, so the order the driver is given is the order the machine
+ *     sees, and session drift falls on both members of a pair;
+ *   - --repeat N per W3: N = 1 is accepted and RECORDED as applied; N > 1 is
+ *     REFUSED with a non-zero exit, because the batched C bracket is not
+ *     implemented and dividing an unconfirmed bracket by R would fabricate a
+ *     per-iteration figure. Every record carries repeat_requested and
+ *     repeat_applied as integers so the harness can check rather than trust;
+ *   - for cached decode the cache is pre-filled with the first c-1 tokens
+ *     OUTSIDE every bracket, and each iteration restores the length to c-1
+ *     OUTSIDE the bracket before timing the single step;
+ *   - before a cached decode configuration's warmup begins, its step's logits
+ *     are asserted BIT-IDENTICAL to the no-cache step's at the same context,
+ *     and a mismatch ABORTS that configuration with a non-zero exit rather
+ *     than timing a wrong computation.
+ *
+ * STILL NOT CHANGED: bench_run, the warmup and sample handling, the
+ * statistics, the validity rule, the drift diagnostic, and the contents of
+ * every timed bracket apart from WHICH model call is made inside it.
  */
 #include "bench_common.h"
 #include "model.h"
@@ -77,7 +106,10 @@
 #endif
 
 #define MAX_SAMPLES 64
-#define MAX_RECORDS 16
+/* Raised from 16 by Stage 4: the configuration set is now explicit and carries
+ * a cache and a no-cache member per length. This is a slot count, not a
+ * protocol value -- the warmup, sample count and validity rule are untouched. */
+#define MAX_RECORDS 32
 
 /* ------------------------------------------------------------ contexts ---- */
 
@@ -104,6 +136,20 @@ static double decode_body(void *vc, int iteration)
     (void)iteration;
     double t0 = bench_cpu_time_seconds();
     model_decode_step(c->m, c->ids, c->n, c->logits, c->cap);
+    return (bench_cpu_time_seconds() - t0) * 1000.0;
+}
+
+/* THE CACHED DECODE STEP. The cache length is restored to c-1 here, BEFORE t0,
+ * so the restoration is outside the timed bracket and every timed iteration
+ * runs at the same context against the same cached positions. The bracket
+ * contains one model call and nothing else, exactly as the two bodies above. */
+static double decode_cached_body(void *vc, int iteration)
+{
+    fwd_ctx *c = (fwd_ctx *)vc;
+    (void)iteration;
+    model_kv_set_length(c->m, (int)c->n - 1);
+    double t0 = bench_cpu_time_seconds();
+    model_decode_step_cached(c->m, c->ids, c->n, c->logits, c->cap);
     return (bench_cpu_time_seconds() - t0) * 1000.0;
 }
 
@@ -284,6 +330,77 @@ static int parse_int_list(const char *s, int *out, int cap)
     return (*s == '\0') ? n : -1;
 }
 
+/* ------------------------------------------------ the configuration list ----
+ * ONE ORDERED LIST, so the order the machine sees is the order the caller asked
+ * for. Stage 4 needs a cache configuration and its no-cache control adjacent at
+ * each length, which neither --lengths nor --contexts can express on its own.
+ * A bare invocation builds this list from --lengths, --contexts and the two
+ * path flags, all of which default to their pre-Stage-4 values, so the default
+ * list is the Stage 3 list in the Stage 3 order. */
+
+typedef enum { CFG_PREFILL = 0, CFG_DECODE = 1, CFG_GEMM = 2 } cfg_kind;
+
+typedef struct {
+    cfg_kind kind;
+    int      tokens;   /* prefill L, decode c, or the GEMM's N */
+    int      cache;    /* 1 = the cached engine path; ignored for CFG_GEMM */
+} cfg_item;
+
+static const char *path_name(int cache) { return cache ? "cache" : "nocache"; }
+
+/* Parses "prefill:16:cache,prefill:16:nocache,decode:32:cache,gemm:768".
+ * Returns the count, or -1 naming nothing -- the caller prints the usage. */
+static int parse_cfg_list(const char *s, cfg_item *out, int cap)
+{
+    int n = 0;
+    char buf[1024];
+    if (strlen(s) + 1 > sizeof buf) return -1;
+    memcpy(buf, s, strlen(s) + 1);
+
+    char *save = buf;
+    while (*save) {
+        char *item = save;
+        char *comma = strchr(save, ',');
+        if (comma) { *comma = '\0'; save = comma + 1; } else { save = item + strlen(item); }
+        if (*item == '\0') continue;
+        if (n >= cap) return -1;
+
+        char *c1 = strchr(item, ':');
+        if (!c1) return -1;
+        *c1 = '\0';
+        char *rest = c1 + 1;
+        char *c2 = strchr(rest, ':');
+        if (c2) *c2 = '\0';
+
+        int tokens = 0;
+        if (!parse_positive_int(rest, &tokens)) return -1;
+
+        if (!strcmp(item, "gemm")) {
+            if (c2) return -1;                     /* a GEMM has no engine path */
+            out[n].kind = CFG_GEMM; out[n].cache = 0;
+        } else if (!strcmp(item, "prefill") || !strcmp(item, "decode")) {
+            out[n].kind = !strcmp(item, "prefill") ? CFG_PREFILL : CFG_DECODE;
+            if (!c2) return -1;                    /* the path is required here */
+            if (!strcmp(c2 + 1, "cache")) out[n].cache = 1;
+            else if (!strcmp(c2 + 1, "nocache")) out[n].cache = 0;
+            else return -1;
+        } else {
+            return -1;
+        }
+        out[n].tokens = tokens;
+        ++n;
+    }
+    return n > 0 ? n : -1;
+}
+
+/* "cache"/"nocache" -> 1/0, or -1 for anything else. */
+static int parse_path(const char *s)
+{
+    if (!strcmp(s, "cache")) return 1;
+    if (!strcmp(s, "nocache")) return 0;
+    return -1;
+}
+
 int main(int argc, char **argv)
 {
     int warmup = 25;            /* BENCHMARK_PROTOCOL.md section 4.2, adjusted value */
@@ -299,6 +416,13 @@ int main(int argc, char **argv)
      * invocation reproduces Stage 2 exactly. */
     int lengths[MAX_RECORDS]  = { 32, 64 };          int n_lengths  = 2;
     int contexts[MAX_RECORDS] = { 32, 64, 128 };     int n_contexts = 3;
+
+    /* Stage 4. Both default to the pre-Stage-4 path, so a bare invocation runs
+     * the Stage 2 / Stage 3 engine and nothing about it moves. */
+    int prefill_cache = 0, decode_cache = 0;
+    int repeat_requested = 1;
+    cfg_item cfgs[MAX_RECORDS];
+    int n_cfgs = 0;                                  /* 0 = build the default list */
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--warmup") && i + 1 < argc)  { warmup  = atoi(argv[++i]); continue; }
@@ -322,15 +446,86 @@ int main(int argc, char **argv)
             if (n_contexts < 0) { fprintf(stderr, "bad --contexts list\n"); return 2; }
             continue;
         }
+        if (!strcmp(argv[i], "--prefill-path") && i + 1 < argc) {
+            prefill_cache = parse_path(argv[++i]);
+            if (prefill_cache < 0) { fprintf(stderr, "bad --prefill-path\n"); return 2; }
+            continue;
+        }
+        if (!strcmp(argv[i], "--decode-path") && i + 1 < argc) {
+            decode_cache = parse_path(argv[++i]);
+            if (decode_cache < 0) { fprintf(stderr, "bad --decode-path\n"); return 2; }
+            continue;
+        }
+        if (!strcmp(argv[i], "--configs") && i + 1 < argc) {
+            n_cfgs = parse_cfg_list(argv[++i], cfgs, MAX_RECORDS);
+            if (n_cfgs < 0) { fprintf(stderr, "bad --configs list\n"); return 2; }
+            continue;
+        }
+        /* W3. R = 1 is the only construction this driver implements. A request
+         * for R > 1 is REFUSED here rather than ignored: a driver that silently
+         * ran one iteration while the harness divided the bracket by R would
+         * report a per-iteration figure that no iteration produced. The C-side
+         * batching loop is owned by the first stage that selects R > 1. */
+        if (!strcmp(argv[i], "--repeat") && i + 1 < argc) {
+            repeat_requested = atoi(argv[++i]);
+            if (repeat_requested != 1) {
+                fprintf(stderr,
+                        "--repeat %d REFUSED. PERSISTENT.md section 8, W3: the batched C "
+                        "bracket is NOT IMPLEMENTED in this driver. Only --repeat 1 is "
+                        "accepted, and it is recorded as applied. No figure is produced "
+                        "from an unconfirmed repeat.\n", repeat_requested);
+                return 2;
+            }
+            continue;
+        }
         fprintf(stderr,
                 "usage: %s [--warmup N] [--samples N] [--probe] [--fixture PATH]\n"
                 "          [--lengths L,L,...] [--contexts C,C,...] [--out STEM]\n"
                 "          [--prompt-set-status S] [--prompt-set-decision D]\n"
-                "          [--prompt-set-work-item W]\n",
+                "          [--prompt-set-work-item W]\n"
+                "          [--prefill-path cache|nocache] [--decode-path cache|nocache]\n"
+                "          [--configs prefill:16:cache,decode:32:nocache,gemm:768,...]\n"
+                "          [--repeat 1]\n"
+                "an unrecognised flag is REFUSED with a non-zero exit, never ignored.\n",
                 argv[0]);
         return 2;
     }
     if (samples > MAX_SAMPLES) samples = MAX_SAMPLES;
+
+    /* The default configuration list: the Stage 3 set in the Stage 3 order, at
+     * whatever paths the two path flags name (both nocache unless asked). */
+    if (n_cfgs == 0) {
+        for (int i = 0; i < n_lengths && n_cfgs < MAX_RECORDS; ++i) {
+            cfgs[n_cfgs].kind = CFG_PREFILL;
+            cfgs[n_cfgs].tokens = lengths[i];
+            cfgs[n_cfgs].cache = prefill_cache;
+            ++n_cfgs;
+        }
+        for (int i = 0; i < n_contexts && n_cfgs < MAX_RECORDS; ++i) {
+            cfgs[n_cfgs].kind = CFG_DECODE;
+            cfgs[n_cfgs].tokens = contexts[i];
+            cfgs[n_cfgs].cache = decode_cache;
+            ++n_cfgs;
+        }
+        cfgs[n_cfgs].kind = CFG_GEMM; cfgs[n_cfgs].tokens = 768;  cfgs[n_cfgs].cache = 0; ++n_cfgs;
+        cfgs[n_cfgs].kind = CFG_GEMM; cfgs[n_cfgs].tokens = 3072; cfgs[n_cfgs].cache = 0; ++n_cfgs;
+    }
+
+    /* Whatever the list came from, the probe pass and the timed pass walk the
+     * SAME list in the SAME order, so --lengths and --contexts are rebuilt from
+     * it for the row-availability check below. */
+    n_lengths = 0; n_contexts = 0;
+    for (int i = 0; i < n_cfgs; ++i) {
+        if (cfgs[i].kind == CFG_PREFILL) {
+            int seen = 0;
+            for (int j = 0; j < n_lengths; ++j) if (lengths[j] == cfgs[i].tokens) seen = 1;
+            if (!seen) lengths[n_lengths++] = cfgs[i].tokens;
+        } else if (cfgs[i].kind == CFG_DECODE) {
+            int seen = 0;
+            for (int j = 0; j < n_contexts; ++j) if (contexts[j] == cfgs[i].tokens) seen = 1;
+            if (!seen) contexts[n_contexts++] = cfgs[i].tokens;
+        }
+    }
 
     /* ---- placement, applied and RECORDED, outside every timed bracket ---- */
     bench_thread_placement place = bench_pin_current_thread(-1);
@@ -408,32 +603,81 @@ int main(int argc, char **argv)
     if (!logits) { fprintf(stderr, "out of memory for logits\n"); return 1; }
     model_reserve(m, max_needed);
 
+    /* ---- the cache, allocated and first-touched ONCE, here, outside every
+     *      bracket, and only if some configuration actually asks for it. A run
+     *      of no-cache configurations allocates nothing and holds zero cache
+     *      bytes. ---- */
+    int any_cache = 0;
+    for (int i = 0; i < n_cfgs; ++i)
+        if (cfgs[i].kind != CFG_GEMM && cfgs[i].cache) any_cache = 1;
+    if (any_cache) {
+        model_status krc = model_kv_reserve(m, max_needed);
+        if (krc != MODEL_OK) {
+            fprintf(stderr, "kv cache reserve for %zu positions: %s\n",
+                    max_needed, model_strerror(krc));
+            return 1;
+        }
+        printf("kv cache: capacity %d positions, %zu bytes allocated and touched "
+               "(= n_layer %d x 2 x capacity x n_embd %d x 4 B), outside every bracket\n",
+               model_kv_capacity(m), model_kv_footprint_bytes(m),
+               cfg->n_layer, cfg->n_embd);
+    } else {
+        printf("kv cache: NOT allocated -- every configuration in this run is on the "
+               "no-cache path, so the resident cache footprint is 0 bytes\n");
+    }
+
+    /* A second logits buffer, for the pre-warmup bit-identity assertion on each
+     * cached decode configuration. Allocated here, outside every bracket. */
+    float *logits_ref = (float *)malloc(V * sizeof(float));
+    if (!logits_ref) { fprintf(stderr, "out of memory for the comparison buffer\n"); return 1; }
+
     /* ---- the untimed probe. ONE iteration of EVERY requested configuration,
      *      because the harness selects its W3 timing construction per
      *      configuration from a measured probe rather than from an expectation.
      *      A probe is a scheduling input, NOT a measurement, and is labelled so
      *      on every line it appears. ---- */
-    for (int i = 0; i < n_lengths; ++i) {
-        fixture_row *r = row_for(rows, n_rows, lengths[i]);
-        double t0 = bench_cpu_time_seconds();
-        model_prefill(m, r->ids, (size_t)lengths[i], logits, (size_t)lengths[i] * V);
-        double t = bench_cpu_time_seconds() - t0;
-        printf("probe prefill L=%d row=%s seconds=%.6f  (NOT A MEASUREMENT) "
-               "budget=(%d+%d)x=%.1f s\n",
-               lengths[i], r->id, t, warmup, samples, (warmup + samples) * t);
+    /*      The probe walks the configuration list in the SAME ORDER the timed
+     *      pass will, and each probe runs the path its configuration names, so
+     *      the construction is selected from a probe of the code that will
+     *      actually be timed. */
+    for (int i = 0; i < n_cfgs; ++i) {
+        if (cfgs[i].kind == CFG_GEMM) continue;      /* the GEMM cases are fixed shapes */
+        fixture_row *r = row_for(rows, n_rows, cfgs[i].tokens);
+        const int tok = cfgs[i].tokens;
+        model_set_decode_path(m, cfgs[i].cache ? MODEL_PATH_CACHE : MODEL_PATH_NOCACHE);
+        double t;
+        if (cfgs[i].kind == CFG_PREFILL) {
+            double t0 = bench_cpu_time_seconds();
+            model_prefill(m, r->ids, (size_t)tok, logits, (size_t)tok * V);
+            t = bench_cpu_time_seconds() - t0;
+            printf("probe prefill L=%d row=%s seconds=%.6f path=%s  (NOT A MEASUREMENT) "
+                   "budget=(%d+%d)x=%.1f s\n",
+                   tok, r->id, t, path_name(cfgs[i].cache),
+                   warmup, samples, (warmup + samples) * t);
+        } else if (cfgs[i].cache) {
+            /* The cache is filled with the first c-1 tokens outside the probe's
+             * own bracket, exactly as the timed pass will fill it. */
+            model_prefill(m, r->ids, (size_t)tok - 1, logits, ((size_t)tok - 1) * V);
+            model_kv_set_length(m, tok - 1);
+            double t0 = bench_cpu_time_seconds();
+            model_decode_step_cached(m, r->ids, (size_t)tok, logits, V);
+            t = bench_cpu_time_seconds() - t0;
+            printf("probe decode c=%d row=%s seconds=%.6f path=cache  (NOT A MEASUREMENT) "
+                   "budget=(%d+%d)x=%.1f s\n",
+                   tok, r->id, t, warmup, samples, (warmup + samples) * t);
+        } else {
+            double t0 = bench_cpu_time_seconds();
+            model_decode_step(m, r->ids, (size_t)tok, logits, V);
+            t = bench_cpu_time_seconds() - t0;
+            printf("probe decode c=%d row=%s seconds=%.6f path=nocache  (NOT A MEASUREMENT) "
+                   "budget=(%d+%d)x=%.1f s\n",
+                   tok, r->id, t, warmup, samples, (warmup + samples) * t);
+        }
     }
-    for (int i = 0; i < n_contexts; ++i) {
-        fixture_row *r = row_for(rows, n_rows, contexts[i]);
-        double t0 = bench_cpu_time_seconds();
-        model_decode_step(m, r->ids, (size_t)contexts[i], logits, V);
-        double t = bench_cpu_time_seconds() - t0;
-        printf("probe decode c=%d row=%s seconds=%.6f  (NOT A MEASUREMENT) "
-               "budget=(%d+%d)x=%.1f s\n",
-               contexts[i], r->id, t, warmup, samples, (warmup + samples) * t);
-    }
+    model_set_decode_path(m, MODEL_PATH_NOCACHE);
     fflush(stdout);
     if (probe_only) {
-        model_free(m); tok_free(tok); free(logits);
+        model_free(m); tok_free(tok); free(logits); free(logits_ref);
         for (int i = 0; i < n_rows; ++i) free(rows[i].ids);
         return 0;
     }
@@ -445,17 +689,31 @@ int main(int argc, char **argv)
     char pinbuf[128];
     snprintf(pinbuf, sizeof pinbuf, "%s", place.detail);
 
-    /* ---------------------------------------------------------- PREFILL ---- */
-    for (int li = 0; li < n_lengths; ++li) {
-        int L = lengths[li];
+    /* ---- ONE LOOP, IN THE ORDER THE CONFIGURATION LIST GIVES. Prefill,
+     *      decode and the isolated GEMM are still three separate record
+     *      shapes and are still never combined into one figure; what changed is
+     *      that their ORDER is the caller's, so a cache configuration and its
+     *      no-cache control are adjacent in time. ---- */
+    for (int ci = 0; ci < n_cfgs; ++ci) {
+    if (cfgs[ci].kind == CFG_PREFILL) {
+        int L = cfgs[ci].tokens;
+        const int use_cache = cfgs[ci].cache;
         fixture_row *row = row_for(rows, n_rows, L);
         slot *s = &slots[n];
         fwd_ctx c = { m, row->ids, (size_t)L, logits, (size_t)L * V };
         int ew = 0, es = 0;
+        /* The path is selected OUTSIDE the bracket, once per configuration. */
+        model_set_decode_path(m, use_cache ? MODEL_PATH_CACHE : MODEL_PATH_NOCACHE);
         s->stats = bench_run(prefill_body, &c, warmup, samples, s->samples, &ew, &es);
         snprintf(s->configuration, sizeof s->configuration,
-                 "prefill, L=%d tokens, head at every position, no KV cache", L);
+                 "prefill, L=%d tokens, head at every position, KV cache %s", L,
+                 use_cache ? "WRITTEN (cache path)" : "none (no-cache path)");
         add_num(s, "tokens", L);
+        add_num(s, "repeat_requested", repeat_requested);
+        add_num(s, "repeat_applied", 1);
+        add_num(s, "cache_capacity", use_cache ? model_kv_capacity(m) : 0);
+        add_num(s, "cache_bytes", use_cache ? (double)model_kv_footprint_bytes(m) : 0.0);
+        add_str(s, "prefill_path", path_name(use_cache));
         add_num(s, "context_tokens", L);
         add_num(s, "vocab_size", (double)V);
         add_num(s, "n_layer", cfg->n_layer);
@@ -464,7 +722,13 @@ int main(int argc, char **argv)
         add_num(s, "thread_logical_cpu", place.logical_cpu);
         add_str(s, "workload", "prefill");
         add_str(s, "matmul", model_gemm_of(m)->name);
-        add_str(s, "kv_cache", "none -- Stage 4 adds it");
+        add_str(s, "kv_cache", use_cache
+                ? "WRITTEN: every position's keys and values, per layer, stores only"
+                : "none -- the no-cache path, kept selectable by Stage 4");
+        add_str(s, "cache_state_construction", use_cache
+                ? "allocated and first-touched once, outside every bracket; prefill writes "
+                  "positions 0..L-1 inside the timed call as part of the pass"
+                : "no cache allocated for this configuration");
         add_str(s, "causal_mask", "regenerated as a loop bound; the stored mask buffers are not read");
         add_str(s, "attn_c_proj_reading", "as-stored [input, output]");
         add_str(s, "prompt_set_status", ps_status);
@@ -490,8 +754,9 @@ int main(int argc, char **argv)
         s->rec.meta_str = s->str; s->rec.n_meta_str = s->n_str;
         s->rec.meta_num = s->num; s->rec.n_meta_num = s->n_num;
         recs[n] = s->rec;
-        printf("prefill L=%3d : median %10.3f ms  min %10.3f  max %10.3f  stddev %6.3f%%  %s\n",
-               L, s->stats.median, s->stats.min, s->stats.max,
+        printf("prefill L=%3d %-7s : median %10.3f ms  min %10.3f  max %10.3f  "
+               "stddev %6.3f%%  %s\n",
+               L, path_name(use_cache), s->stats.median, s->stats.min, s->stats.max,
                s->stats.stddev_pct_of_median, s->stats.valid ? "VALID" : "INVALID");
         printf("               drift (DIAGNOSTIC): first half %10.3f ms, second half %10.3f ms, "
                "%+.3f%%\n", s->num[s->n_num - 5].value, s->num[s->n_num - 4].value,
@@ -500,18 +765,86 @@ int main(int argc, char **argv)
     }
 
     /* ----------------------------------------------------------- DECODE ---- */
-    for (int ci = 0; ci < n_contexts; ++ci) {
-        int C = contexts[ci];
+    else if (cfgs[ci].kind == CFG_DECODE) {
+        int C = cfgs[ci].tokens;
+        const int use_cache = cfgs[ci].cache;
         fixture_row *row = row_for(rows, n_rows, C);
         slot *s = &slots[n];
         fwd_ctx c = { m, row->ids, (size_t)C, logits, V };
         int ew = 0, es = 0;
-        s->stats = bench_run(decode_body, &c, warmup, samples, s->samples, &ew, &es);
+
+        model_set_decode_path(m, use_cache ? MODEL_PATH_CACHE : MODEL_PATH_NOCACHE);
+
+        if (use_cache) {
+            /* ---- EVERYTHING HERE IS OUTSIDE EVERY TIMED BRACKET ----
+             * The cache is filled with the first c-1 tokens, and then the
+             * cached step's logits are asserted BIT-IDENTICAL to the no-cache
+             * step's at the same context. A mismatch aborts THIS configuration
+             * with a non-zero exit: timing a computation that gives a different
+             * answer would produce a number that means nothing. */
+            model_set_decode_path(m, MODEL_PATH_NOCACHE);
+            model_status drc = model_decode_step(m, row->ids, (size_t)C, logits_ref, V);
+            if (drc != MODEL_OK) {
+                fprintf(stderr, "the no-cache reference step at c=%d failed: %s\n",
+                        C, model_strerror(drc));
+                return 1;
+            }
+            model_set_decode_path(m, MODEL_PATH_CACHE);
+            model_status prc = model_prefill(m, row->ids, (size_t)C - 1, logits,
+                                             ((size_t)C - 1) * V);
+            if (prc != MODEL_OK) {
+                fprintf(stderr, "filling the cache to %d positions failed: %s\n",
+                        C - 1, model_strerror(prc));
+                return 1;
+            }
+            model_kv_set_length(m, C - 1);
+            drc = model_decode_step_cached(m, row->ids, (size_t)C, logits, V);
+            if (drc != MODEL_OK) {
+                fprintf(stderr, "the cached step at c=%d failed: %s\n", C, model_strerror(drc));
+                return 1;
+            }
+            size_t differing = 0;
+            double maxdiff = 0.0;
+            for (size_t v = 0; v < V; ++v)
+                if (logits[v] != logits_ref[v]) {
+                    ++differing;
+                    double d = (double)logits[v] - (double)logits_ref[v];
+                    if (d < 0) d = -d;
+                    if (d > maxdiff) maxdiff = d;
+                }
+            if (differing != 0) {
+                fprintf(stderr,
+                        "ABORTED decode c=%d (cache): the cached step and the no-cache step "
+                        "disagree at the same context -- %zu of %zu logits differ, max "
+                        "absolute difference %g. This configuration is NOT timed. A faster "
+                        "wrong answer is a regression.\n", C, differing, V, maxdiff);
+                return 1;
+            }
+            printf("decode  c=%3d cache   : pre-warmup check PASSED -- the cached step and "
+                   "the no-cache step agree BIT FOR BIT over %zu logits\n", C, V);
+            fflush(stdout);
+        }
+
+        s->stats = bench_run(use_cache ? decode_cached_body : decode_body,
+                             &c, warmup, samples, s->samples, &ew, &es);
         snprintf(s->configuration, sizeof s->configuration,
                  "decode, one step at context c=%d tokens, head at the last position only, "
-                 "no KV cache", C);
+                 "KV cache %s", C, use_cache ? "USED (cache path)" : "none (no-cache path)");
         add_num(s, "context_tokens", C);
         add_num(s, "tokens_generated", 1);
+        add_num(s, "repeat_requested", repeat_requested);
+        add_num(s, "repeat_applied", 1);
+        add_num(s, "cache_capacity", use_cache ? model_kv_capacity(m) : 0);
+        add_num(s, "cache_bytes", use_cache ? (double)model_kv_footprint_bytes(m) : 0.0);
+        add_num(s, "cached_positions", use_cache ? C - 1 : 0);
+        add_str(s, "decode_path", path_name(use_cache));
+        add_str(s, "cache_state_construction", use_cache
+                ? "length restored outside bracket"
+                : "no cache allocated for this configuration");
+        add_str(s, "pre_warmup_bit_identity_check", use_cache
+                ? "PASSED: the cached step's logits are bit-identical to the no-cache step's "
+                  "at the same context; a mismatch aborts the configuration untimed"
+                : "not applicable: this configuration IS the no-cache path");
         add_num(s, "vocab_size", (double)V);
         add_num(s, "n_layer", cfg->n_layer);
         add_num(s, "prompt_set_owning_stage", 3);
@@ -519,7 +852,9 @@ int main(int argc, char **argv)
         add_num(s, "thread_logical_cpu", place.logical_cpu);
         add_str(s, "workload", "decode");
         add_str(s, "matmul", model_gemm_of(m)->name);
-        add_str(s, "kv_cache", "none -- a decode step re-runs the whole forward pass");
+        add_str(s, "kv_cache", use_cache
+                ? "USED: one token through the weights, attention over the cached positions"
+                : "none -- a decode step re-runs the whole forward pass");
         add_str(s, "causal_mask", "regenerated as a loop bound; the stored mask buffers are not read");
         add_str(s, "attn_c_proj_reading", "as-stored [input, output]");
         add_str(s, "prompt_set_status", ps_status);
@@ -528,7 +863,11 @@ int main(int argc, char **argv)
         add_str(s, "prompt_set_source", fixture);
         add_str(s, "prompt_row_id", row->id);
         add_str(s, "thread_placement", pinbuf);
-        add_str(s, "timed_bracket_contains", "model_decode_step only");
+        add_str(s, "timed_bracket_contains", use_cache
+                ? "model_decode_step_cached only; the cache allocation, the pre-fill of the "
+                  "first c-1 positions and the per-iteration length restoration are all "
+                  "outside it"
+                : "model_decode_step only");
         add_str(s, "tag", "measured");
         add_drift(s, es);
         s->rec.benchmark = "stage2_forward";
@@ -543,8 +882,9 @@ int main(int argc, char **argv)
         s->rec.meta_str = s->str; s->rec.n_meta_str = s->n_str;
         s->rec.meta_num = s->num; s->rec.n_meta_num = s->n_num;
         recs[n] = s->rec;
-        printf("decode  c=%3d : median %10.3f ms  min %10.3f  max %10.3f  stddev %6.3f%%  %s\n",
-               C, s->stats.median, s->stats.min, s->stats.max,
+        printf("decode  c=%3d %-7s : median %10.3f ms  min %10.3f  max %10.3f  "
+               "stddev %6.3f%%  %s\n",
+               C, path_name(use_cache), s->stats.median, s->stats.min, s->stats.max,
                s->stats.stddev_pct_of_median, s->stats.valid ? "VALID" : "INVALID");
         printf("               drift (DIAGNOSTIC): first half %10.3f ms, second half %10.3f ms, "
                "%+.3f%%\n", s->num[s->n_num - 5].value, s->num[s->n_num - 4].value,
@@ -562,15 +902,14 @@ int main(int argc, char **argv)
      *   N = 3072 : B is 768 x 3072 x 4 B = 9.00 MiB -- outside it
      * Both are real model shapes: the attention output projection and the
      * feed-forward expansion, at a prefill of 32 tokens. */
-    {
-        const int Ns[] = { 768, 3072 };
-        const char *shape_names[] = {
-            "attn.c_proj shape, B = 2.25 MiB, L3-resident",
-            "mlp.c_fc shape, B = 9.00 MiB, exceeds the 8 MiB L3"
-        };
+    else {
         const int M = 32, K = 768;
-        for (size_t gi = 0; gi < sizeof Ns / sizeof *Ns; ++gi) {
-            int N = Ns[gi];
+        {
+            int N = cfgs[ci].tokens;
+            const char *shape_name =
+                (N == 768)  ? "attn.c_proj shape, B = 2.25 MiB, L3-resident" :
+                (N == 3072) ? "mlp.c_fc shape, B = 9.00 MiB, exceeds the 8 MiB L3" :
+                              "a GEMM shape named on the command line";
             float *A = (float *)malloc((size_t)M * K * sizeof(float));
             float *B = (float *)malloc((size_t)K * N * sizeof(float));
             float *Cm = (float *)malloc((size_t)M * N * sizeof(float));
@@ -592,8 +931,10 @@ int main(int argc, char **argv)
             double flops = 2.0 * M * N * K;
             double gflops = s->stats.median > 0 ? flops / (s->stats.median * 1e-3) / 1e9 : 0.0;
             snprintf(s->configuration, sizeof s->configuration,
-                     "isolated gemm_naive, M=%d N=%d K=%d, %s", M, N, K, shape_names[gi]);
+                     "isolated gemm_naive, M=%d N=%d K=%d, %s", M, N, K, shape_name);
             add_num(s, "M", M); add_num(s, "N", N); add_num(s, "K", K);
+            add_num(s, "repeat_requested", repeat_requested);
+            add_num(s, "repeat_applied", 1);
             add_num(s, "flops", flops);
             add_num(s, "b_operand_bytes", (double)K * N * 4.0);
             add_num(s, "a_operand_bytes", (double)M * K * 4.0);
@@ -631,6 +972,11 @@ int main(int argc, char **argv)
             free(A); free(B); free(Cm);
         }
     }
+    }   /* end of the one ordered configuration loop */
+
+    /* The path is left at the default once the timed set is finished, so nothing
+     * after this point depends on which configuration ran last. */
+    model_set_decode_path(m, MODEL_PATH_NOCACHE);
 
     if (bench_write_results(NULL, out_stem, recs, n) != 0) {
         fprintf(stderr, "writing the results file FAILED\n");
@@ -641,7 +987,7 @@ int main(int argc, char **argv)
            bench_default_results_dir(dir, sizeof dir), out_stem, bench_stage_id(), n);
 
     bench_restore_current_thread();
-    free(logits);
+    free(logits); free(logits_ref);
     for (int i = 0; i < n_rows; ++i) free(rows[i].ids);
     model_free(m);
     tok_free(tok);

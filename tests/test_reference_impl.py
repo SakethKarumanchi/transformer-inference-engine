@@ -85,14 +85,17 @@ def read_logit_dump(path):
     return np.frombuffer(raw, dtype=np.float32).reshape(npos, nvocab).copy()
 
 
-def run_engine(engine, prompt_path, truncate, dump=None, generate=0, cproj="as-stored"):
+def run_engine(engine, prompt_path, truncate, dump=None, generate=0, cproj="as-stored",
+               kv_cache="off", timeout=280):
     cmd = [engine, "--prompt-file", prompt_path, "--truncate", str(truncate),
            "--cproj", cproj]
+    if kv_cache == "on":
+        cmd += ["--kv-cache", "on"]
     if dump:
         cmd += ["--dump-logits", dump]
     if generate:
         cmd += ["--generate", str(generate)]
-    out = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=280)
+    out = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=timeout)
     if out.returncode != 0:
         print(out.stdout)
         print(out.stderr, file=sys.stderr)
@@ -180,6 +183,119 @@ def git_commit():
         return ""
 
 
+def greedy32_phase(a):
+    """STAGE 4, DECISION E CHECK 6. Thirty-two greedily generated tokens from the
+    D3 row d3_16, produced three ways, all required to be EXACTLY equal:
+
+      - the engine's CACHED path   (phase "cache")
+      - the engine's NO-CACHE path (phase "nocache")
+      - the oracle's own greedy generation, full recompute per step
+
+    The cached phase writes its sequence to a small JSON beside the results, and
+    the no-cache phase reads it back and compares all three. That is what lets
+    the expensive leg be its own CTest entry without losing the three-way
+    comparison: the sequences are compared, not re-derived.
+
+    REDUCED, AND STATED: 32 generated tokens against n_ctx = 1024. The reduction
+    applies to this correctness check only; no timed configuration is shortened.
+    """
+    global checks, failures
+    phase = a.greedy32
+    n_new = a.greedy32_tokens
+
+    # The D3 FIXED prompt set, read with the last-column convention the C driver
+    # and bench/correctness.py both use, so the three readers cannot disagree
+    # about which column is the prompt. The fixture is READ ONLY: this stage does
+    # not edit, regenerate or re-encode it.
+    d3_path = os.path.join(REPO, "tests", "fixtures", "benchmark_prompts.tsv")
+    rows = {}
+    with open(d3_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.rstrip("\n").rstrip("\r").split("\t")
+            if len(parts) >= 3:
+                rows[parts[0]] = {"id": parts[0], "target_tokens": int(parts[1]),
+                                  "text": parts[-1]}
+    if a.greedy32_row not in rows:
+        print(f"  {d3_path} has no row {a.greedy32_row}", file=sys.stderr)
+        return 2
+    row = rows[a.greedy32_row]
+    L = int(row["target_tokens"])
+
+    print(f"test_reference_impl --greedy32 {phase}")
+    print(f"  DECISION E check 6: {n_new} greedily generated tokens from D3 row "
+          f"{a.greedy32_row} (L={L}). REDUCED relative to n_ctx=1024 and stated as reduced; "
+          f"no timed configuration is shortened")
+
+    os.makedirs(a.out_dir, exist_ok=True)
+    prompt_path = os.path.join(a.out_dir, f"greedy32_{a.greedy32_row}.txt")
+    with open(prompt_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(row["text"])
+    record_path = os.path.join(a.out_dir, "greedy32_cache_sequence.json")
+
+    if phase == "cache":
+        # The cached engine path, and the oracle, which is cheap enough to run
+        # in the same phase.
+        seq_cache, _ = run_engine(a.engine, prompt_path, L, generate=n_new,
+                                  kv_cache="on", timeout=280)
+        check(len(seq_cache) == L + n_new,
+              f"the cached path produced {L} prompt + {n_new} generated = "
+              f"{L + n_new} ids (got {len(seq_cache)})")
+
+        from reference.reference_impl import ReferenceGPT2
+        oracle = ReferenceGPT2()
+        seq_ref = [int(x) for x in oracle.greedy(seq_cache[:L], n_new)]
+        check(seq_cache == seq_ref,
+              f"CHECK 6: the CACHED path's {n_new}-token greedy sequence matches the "
+              f"oracle's EXACTLY over all {L + n_new} ids")
+        if seq_cache != seq_ref:
+            first = next((i for i in range(min(len(seq_cache), len(seq_ref)))
+                          if seq_cache[i] != seq_ref[i]), None)
+            print(f"       first divergence at index {first}: engine {seq_cache[first]}, "
+                  f"oracle {seq_ref[first]}")
+
+        with open(record_path, "w", encoding="utf-8") as f:
+            json.dump({"row": a.greedy32_row, "prompt_tokens": L,
+                       "tokens_generated": n_new,
+                       "cached_sequence": seq_cache,
+                       "oracle_sequence": seq_ref,
+                       "cached_matches_oracle": seq_cache == seq_ref}, f)
+        print(f"  the cached sequence is recorded for the no-cache phase: {record_path}")
+    else:
+        # The expensive leg. It compares against the oracle on its own AND
+        # against the cached path's recorded sequence, so all three are compared
+        # even though they were produced by two CTest entries.
+        if not os.path.exists(record_path):
+            print(f"  the cached phase's record is missing: {record_path}. Run "
+                  f"--greedy32 cache first; this phase compares against it.", file=sys.stderr)
+            return 2
+        with open(record_path, "r", encoding="utf-8") as f:
+            rec = json.load(f)
+        check(rec["tokens_generated"] == n_new and rec["row"] == a.greedy32_row,
+              f"the recorded cached sequence is for the same row and token count "
+              f"({rec['row']}, {rec['tokens_generated']} tokens)")
+
+        seq_nocache, _ = run_engine(a.engine, prompt_path, L, generate=n_new,
+                                    kv_cache="off", timeout=295)
+        check(len(seq_nocache) == L + n_new,
+              f"the no-cache path produced {L + n_new} ids (got {len(seq_nocache)})")
+        check(seq_nocache == rec["cached_sequence"],
+              f"CHECK 6: the NO-CACHE path's {n_new}-token greedy sequence matches the "
+              f"CACHED path's EXACTLY over all {L + n_new} ids")
+        check(seq_nocache == rec["oracle_sequence"],
+              f"CHECK 6: the NO-CACHE path's sequence matches the ORACLE's EXACTLY, so all "
+              f"THREE producers agree over {n_new} generated tokens")
+        if seq_nocache != rec["cached_sequence"]:
+            first = next((i for i in range(min(len(seq_nocache), len(rec["cached_sequence"])))
+                          if seq_nocache[i] != rec["cached_sequence"][i]), None)
+            print(f"       first divergence at index {first}: no-cache {seq_nocache[first]}, "
+                  f"cached {rec['cached_sequence'][first]}")
+
+    print(f"test_reference_impl --greedy32 {phase}: {checks} checks, {failures} failures")
+    return 0 if failures == 0 else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--engine", required=True, help="path to the built gpt2_tool")
@@ -187,7 +303,32 @@ def main():
                     help="where the correctness results file is written")
     ap.add_argument("--lengths", default="8,16")
     ap.add_argument("--generate", type=int, default=3)
+    # ---- Stage 4, DECISION E check 6 -------------------------------------
+    # The 32-token greedy comparison across three producers: the engine's CACHED
+    # path, the engine's NO-CACHE path and the oracle. 32 rather than 3 because
+    # a cache fault that only appears after several appends is invisible to a
+    # 3-token check; it is still REDUCED relative to n_ctx = 1024 and is stated
+    # as reduced.
+    #
+    # WHY IT IS SPLIT INTO TWO PHASES. The no-cache leg is the expensive one by
+    # construction: generating 32 tokens from a 16-token prompt without a cache
+    # re-runs the whole forward pass at contexts 17 through 48, which is about
+    # 1,040 token-passes and ran at roughly 215 s on this machine. The cached
+    # leg plus the oracle is about 30 s. Putting all three in one registered
+    # test would come within a few seconds of the 5-minute per-test cap, so the
+    # two phases are registered as two CTest entries over this one file and each
+    # stays well inside it. Both phases must pass; neither is optional.
+    ap.add_argument("--greedy32", choices=("off", "cache", "nocache"), default="off",
+                    help="run ONLY the Stage 4 check-6 phase named: 'cache' compares the "
+                         "cached engine path against the oracle, 'nocache' compares the "
+                         "no-cache engine path against the oracle and against the cached "
+                         "path's recorded sequence")
+    ap.add_argument("--greedy32-tokens", type=int, default=32)
+    ap.add_argument("--greedy32-row", default="d3_16")
     a = ap.parse_args()
+
+    if a.greedy32 != "off":
+        return greedy32_phase(a)
 
     print("test_reference_impl")
     print("  reduced token counts, stated: " + a.lengths + " for the divergence statistics, "

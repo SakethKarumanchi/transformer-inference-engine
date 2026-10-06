@@ -14,6 +14,16 @@
  * cache, and the point of this stage is to be the thing Stage 4 is measured
  * against.
  *
+ * STAGE 4 AMENDMENT -- THE CACHE IS ADDED BEHIND A RUNTIME SWITCH, 2026-10-05.
+ * Both paths are kept and are selectable at run time, following the precedent
+ * model_cproj_reading set: the no-cache path is not deleted, because measuring
+ * the new path against a baseline taken in a DIFFERENT session is the one thing
+ * that cannot be done afterwards (PERSISTENT.md section 8, W14 -- a 9 to 12
+ * percent cross-session shift on unchanged code). The switch defaults to
+ * no-cache, so every Stage 2 and Stage 3 call site reproduces its own
+ * behaviour unchanged, and the cache is selected explicitly. The paragraph
+ * above still describes what the DEFAULT path does.
+ *
  * BUFFERS ARE CALLER-OWNED, matching the Stage 1 convention: the caller
  * allocates the logits buffer and passes its capacity, and the model never
  * hands out a pointer to storage it may later reallocate. Scratch space for the
@@ -34,6 +44,7 @@
 #include <stdint.h>
 
 #include "gemm/gemm.h"
+#include "kv_cache.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,6 +75,22 @@ typedef enum {
     MODEL_CPROJ_AS_STORED  = 0,  /* [input, output], like every rectangular weight */
     MODEL_CPROJ_TRANSPOSED = 1   /* [output, input], the transposed reading        */
 } model_cproj_reading;
+
+/* ---- the Stage 4 decode-path switch -----------------------------------
+ * Which of the two engine paths a call executes. NO_CACHE is the default and is
+ * the Stage 2 path byte for byte: no cache is allocated, nothing is stored, and
+ * no extra arithmetic runs. CACHE makes prefill write every position's keys and
+ * values per layer, and makes a decode step process one token and attend over
+ * what is stored.
+ *
+ * The enum is read ONCE PER CALL, outside every loop, into a local. It is not
+ * consulted per token, per layer or per head: the cost of the switch is one
+ * load and one test per call plus one test per layer at the store site, never a
+ * branch in an inner loop. */
+typedef enum {
+    MODEL_PATH_NOCACHE = 0,   /* the Stage 2 path, and the default */
+    MODEL_PATH_CACHE   = 1
+} model_decode_path;
 
 /* Every value here is read from config.json at load time. Nothing is defaulted
  * and nothing is compiled in; a missing field fails the load. */
@@ -130,7 +157,12 @@ model_status model_reserve(model *m, size_t max_tokens);
  *
  * The head is computed at every position deliberately: the elementwise logit
  * comparison against the reference oracle compares all of them, and the oracle
- * is built to match this choice. */
+ * is built to match this choice.
+ *
+ * Under MODEL_PATH_CACHE this additionally writes every position's keys and
+ * values into the cache for every layer and leaves the cache's length at n_ids,
+ * so a cached decode step can continue from it. It adds stores and no
+ * arithmetic: the logits are bit-identical to the no-cache path's. */
 model_status model_prefill(model *m, const int32_t *ids, size_t n_ids,
                            float *logits_out, size_t logits_cap);
 
@@ -143,6 +175,49 @@ model_status model_prefill(model *m, const int32_t *ids, size_t n_ids,
  * baseline Stage 4 exists to flatten; it is not an oversight. */
 model_status model_decode_step(model *m, const int32_t *ids, size_t n_ids,
                                float *logits_out, size_t logits_cap);
+
+/* ---- Stage 4: the decode-path switch and the cache -------------------- */
+
+/* Selects the path. Takes effect from the next call; no existing signature
+ * changes and nothing is removed. Defaults to MODEL_PATH_NOCACHE. */
+void              model_set_decode_path(model *m, model_decode_path p);
+model_decode_path model_decode_path_of(const model *m);
+
+/* Allocates the cache for a context of up to `capacity` positions. Called
+ * OUTSIDE every timed bracket, like model_reserve: the allocation and the
+ * first touch of every page happen here. Allocation is LAZY -- a model whose
+ * switch is left at MODEL_PATH_NOCACHE and which never calls this holds ZERO
+ * cache bytes, and model_kv_footprint_bytes returns 0 to say so. A second call
+ * at a capacity already covered is a no-op; a larger one reallocates. */
+model_status model_kv_reserve(model *m, size_t capacity);
+
+/* The cache's state, for the timing driver and the tests. The driver restores
+ * the length between iterations, outside the bracket, so that every timed
+ * decode step runs at the same context. */
+size_t model_kv_footprint_bytes(const model *m);
+int    model_kv_capacity(const model *m);
+int    model_kv_length(const model *m);
+model_status model_kv_set_length(model *m, int length);
+const kv_cache *model_kv_cache_of(const model *m);
+
+/* CACHED DECODE: one decode step at a context of n_ids tokens, where positions
+ * 0..n_ids-2 are ALREADY IN THE CACHE and the step processes token n_ids-1
+ * alone, attending over all n_ids positions. Writes the logits for that one
+ * position; logits_cap is in floats and must be at least vocab_size.
+ *
+ * The definition of "a decode step at context c" is Stage 2's and Stage 3's,
+ * unchanged: the step that produces the logits at position c-1, with the head
+ * computed once. What changed is how much work it takes to get them.
+ *
+ * Refuses, BEFORE any arithmetic, when the cache is absent, when n_ids exceeds
+ * the cache's capacity, or when the cache's length is not exactly n_ids-1 --
+ * because a step run against a cache holding the wrong number of positions
+ * would produce a plausible wrong answer rather than an error.
+ *
+ * model_decode_step dispatches here when the switch is set to CACHE; this entry
+ * point is also exposed directly so a test can run both paths on one model. */
+model_status model_decode_step_cached(model *m, const int32_t *ids, size_t n_ids,
+                                      float *logits_out, size_t logits_cap);
 
 /* Greedy selection: the index of the maximum, ties broken by lowest index. */
 int32_t model_argmax(const float *logits, size_t n);
